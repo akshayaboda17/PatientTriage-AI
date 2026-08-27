@@ -1,121 +1,57 @@
 import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
-import './App.css'
+import { Activity, AlertTriangle, ShieldCheck } from 'lucide-react'
 
 function App() {
-  const [count, setCount] = useState(0)
+  const [result, setResult] = useState(null)
+
+  const handleTriage = async () => {
+    // Sending the Ambiguous Cardiac benchmark case
+    const patientData = {
+      age: 48, gender: "Female", hr: 75, sbp: 120, rr: 16, spo2: 98, gcs: 15, history_available: false
+    }
+
+    const response = await fetch('/api/triage', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patientData)
+    })
+    const data = await response.json()
+    setResult(data.result)
+  }
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
-        </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.jsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+    <div className="min-h-screen bg-gray-900 text-white p-10 font-sans">
+      <h1 className="text-3xl font-bold mb-6 flex items-center gap-3">
+        <Activity className="text-red-500" /> PatientTriage.ai
+      </h1>
+      
+      <button onClick={handleTriage} className="bg-blue-600 hover:bg-blue-500 px-6 py-3 rounded-lg font-semibold transition">
+        Run AI Triage (Benchmark Case #3)
+      </button>
 
-      <div className="ticks"></div>
+      {result && (
+        <div className="mt-8 bg-gray-800 p-6 rounded-xl border border-gray-700 max-w-md">
+          <h2 className="text-xl font-bold text-yellow-400 mb-2">Recommended Level: {result.triage_level}</h2>
+          <p className="text-gray-300 mb-4">AI Confidence: {result.confidence_score}%</p>
+          
+          {result.auto_escalated && (
+            <div className="bg-red-900/50 text-red-200 p-3 rounded mb-4 flex items-start gap-2">
+              <AlertTriangle size={20} />
+              <p className="text-sm">Fail-Safe Activated: Patient severity auto-escalated due to low confidence or missing history.</p>
+            </div>
+          )}
 
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
+          <h3 className="font-semibold text-gray-400 mb-2 flex items-center gap-2">
+            <ShieldCheck size={18}/> Top Clinical Drivers (SHAP)
+          </h3>
+          <ul className="list-disc pl-5 text-sm text-gray-300">
+            {result.clinical_drivers.map((driver, idx) => (
+              <li key={idx}>{driver}</li>
+            ))}
           </ul>
         </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
-        </div>
-      </section>
-
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+      )}
+    </div>
   )
 }
 
