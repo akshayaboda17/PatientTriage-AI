@@ -28,18 +28,26 @@ export default function TriageDecisionModal({ recommendation, staffId, onClose, 
   const handleAccept = async () => {
     setLoading(true);
     try {
+      const token = localStorage.getItem("token");
       const res = await fetch('/api/v1/triage/accept', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
         body: JSON.stringify({
           patient_id: recommendation.patient_id,
-          staff_id: staffId,
           ai_suggested_level: recommendation.ai_suggested_level,
           ai_confidence_score: recommendation.confidence_score,
           top_3_drivers: recommendation.top_3_drivers
         })
       });
-      if (res.ok) onSuccess();
+      if (res.ok) {
+        onSuccess();
+      } else {
+        const errorData = await res.json();
+        alert(errorData.detail || "Accept failed");
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -51,12 +59,15 @@ export default function TriageDecisionModal({ recommendation, staffId, onClose, 
     e.preventDefault();
     setLoading(true);
     try {
+      const token = localStorage.getItem("token");
       const res = await fetch('/api/v1/triage/override', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
         body: JSON.stringify({
           patient_id: recommendation.patient_id,
-          staff_id: staffId,
           ai_suggested_level: recommendation.ai_suggested_level,
           ai_confidence_score: recommendation.confidence_score,
           clinician_assigned_level: Number(selectedLevel),
@@ -65,7 +76,12 @@ export default function TriageDecisionModal({ recommendation, staffId, onClose, 
           top_3_drivers: recommendation.top_3_drivers
         })
       });
-      if (res.ok) onSuccess();
+      if (res.ok) {
+        onSuccess();
+      } else {
+        const errorData = await res.json();
+        alert(errorData.detail || "Override failed");
+      }
     } catch (err) {
       console.error(err);
     } finally {

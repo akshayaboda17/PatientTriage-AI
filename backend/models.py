@@ -1,50 +1,10 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, Date, create_engine, text
-from sqlalchemy.orm import declarative_base, sessionmaker
-
-Base = declarative_base()
-
-class Patient(Base):
-    __tablename__ = 'patients'
-
-    id = Column(Integer, primary_key=True, index=True)
-    # A human-readable medical-record number. Existing triage data can continue
-    # to use this field while the integer id is used by the patient API.
-    patient_id = Column(String, unique=True, index=True, nullable=True) # e.g., PT-000001
-    first_name = Column(String(100), nullable=False, default="")
-    last_name = Column(String(100), nullable=False, default="")
-    date_of_birth = Column(Date, nullable=True)
-    gender = Column(String(50), nullable=True)
-    contact_info = Column(String(255), nullable=True)
-    emergency_contact = Column(String(255), nullable=True)
-    known_allergies = Column(String, nullable=True)
-
-    # Fields retained from the initial triage prototype.
-    age = Column(Float, nullable=True)
-    arrival_mode = Column(String)
-    
-    # Vitals
-    hr = Column(Integer)
-    sbp = Column(Integer)
-    dbp = Column(Integer)
-    rr = Column(Integer)
-    spo2 = Column(Integer)
-    temp = Column(Float)
-    gcs = Column(Integer)
-    pain_score = Column(Integer)
-    history_available = Column(Boolean, default=False)
-    
-    # Engine Outputs (To be filled in Phase 2 & 3)
-    triage_level = Column(Integer, nullable=True)
-    override_reason = Column(String, nullable=True)
-
-# Setup SQLite Database for the prototype
-engine = create_engine("sqlite:///./triage_database.db", connect_args={"check_same_thread": False})
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Date, ForeignKey, Text, JSON, Table, create_engine, Enum, UniqueConstraint, text
+from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 import datetime
 import enum
-from typing import Optional
-from sqlalchemy import String, DateTime, Integer, Enum, Column, Text, JSON
-# If Base is defined in models.py, it will use that automatically.
+import bcrypt
+
+Base = declarative_base()
 
 class OverrideReasonEnum(str, enum.Enum):
     CLINICAL_INTUITION = "Clinical Intuition / Gestalt"
@@ -59,27 +19,145 @@ class ActionTypeEnum(str, enum.Enum):
     OVERRIDDEN = "OVERRIDDEN"
     AUTO_ESCALATED = "AUTO_ESCALATED"
 
-class TriageAuditLog(Base):
-    __tablename__ = "triage_audit_logs"
+# Association table for Role-Permission mapping
+role_permissions = Table(
+    'role_permissions',
+    Base.metadata,
+    Column('role_id', String(50), ForeignKey('roles.role_id'), primary_key=True),
+    Column('permission_id', String(50), ForeignKey('permissions.permission_id'), primary_key=True)
+)
+
+class Hospital(Base):
+    __tablename__ = 'hospitals'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    patient_id = Column(String(50), nullable=False, index=True)
-    staff_id = Column(String(50), nullable=False, index=True)
-    timestamp = Column(DateTime(timezone=True), default=datetime.datetime.utcnow, nullable=False)
+    hospital_id = Column(String(50), unique=True, index=True, nullable=False) # e.g. DEMO001, HOSP_A
+    name = Column(String(200), nullable=False)
+    hospital_type = Column(String(100), nullable=False)
+    address = Column(String(200), nullable=False)
+    city = Column(String(100), nullable=False)
+    state = Column(String(100), nullable=False)
+    country = Column(String(100), nullable=False)
+    postal_code = Column(String(20), nullable=False)
+    registration_number = Column(String(100), nullable=False)
+    emergency_department_available = Column(Boolean, default=True)
+    ed_capacity = Column(Integer, default=50)
+    verification_status = Column(String(50), default="VERIFIED") # PENDING, VERIFIED, REJECTED, SUSPENDED
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+class Permission(Base):
+    __tablename__ = 'permissions'
+
+    permission_id = Column(String(50), primary_key=True) # e.g., patient:create
+    description = Column(String(200), nullable=True)
+
+class Role(Base):
+    __tablename__ = 'roles'
+
+    role_id = Column(String(50), primary_key=True) # e.g. EMERGENCY_PHYSICIAN
+    name = Column(String(100), nullable=False)
+    description = Column(String(200), nullable=True)
+
+    permissions = relationship("Permission", secondary=role_permissions, backref="roles")
+
+class Staff(Base):
+    __tablename__ = 'staffs'
+    __table_args__ = (
+        UniqueConstraint('hospital_id', 'staff_id', name='_hospital_staff_uc'),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    staff_id = Column(String(50), index=True, nullable=False) # e.g. DOC001
+    hospital_id = Column(String(50), ForeignKey('hospitals.hospital_id'), nullable=False)
+    full_name = Column(String(100), nullable=False)
+    employee_id = Column(String(50), nullable=False)
+    official_email = Column(String(100), unique=True, index=True, nullable=False)
+    phone_number = Column(String(50), nullable=False)
+    department = Column(String(100), nullable=False)
+    designation = Column(String(100), nullable=False)
+    professional_registration_number = Column(String(100), nullable=True)
+    years_of_experience = Column(Integer, nullable=True)
+    role_id = Column(String(50), ForeignKey('roles.role_id'), nullable=False)
+    password_hash = Column(String(200), nullable=True)
+    status = Column(String(50), default="PENDING") # ACTIVE, PENDING, SUSPENDED, DEACTIVATED
+    activation_token = Column(String(100), unique=True, nullable=True, index=True)
+    activation_token_expires_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    last_login_at = Column(DateTime, nullable=True)
+
+class Patient(Base):
+    __tablename__ = 'patients'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    patient_id = Column(String(50), unique=True, index=True, nullable=False) # e.g. PT-A100
+    hospital_id = Column(String(50), ForeignKey('hospitals.hospital_id'), nullable=False)
+    first_name = Column(String(100), nullable=False, default="")
+    last_name = Column(String(100), nullable=False, default="")
+    date_of_birth = Column(Date, nullable=True)
+    gender = Column(String(50), nullable=True)
+    contact_info = Column(String(255), nullable=True)
+    emergency_contact = Column(String(255), nullable=True)
+    known_allergies = Column(String, nullable=True)
+
+    # Fields retained from the initial triage prototype
+    age = Column(Float, nullable=True)
+    arrival_mode = Column(String(100), nullable=True)
     
+    # Vitals
+    hr = Column(Integer, nullable=True)
+    sbp = Column(Integer, nullable=True)
+    dbp = Column(Integer, nullable=True)
+    rr = Column(Integer, nullable=True)
+    spo2 = Column(Integer, nullable=True)
+    temp = Column(Float, nullable=True)
+    gcs = Column(Integer, nullable=True)
+    pain_score = Column(Integer, nullable=True)
+    history_available = Column(Boolean, default=False)
+    
+    # Decision outputs
+    triage_level = Column(Integer, nullable=True)
+    override_reason = Column(String(100), nullable=True)
+    created_by = Column(String(50), ForeignKey('staffs.staff_id'), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+class TriageRecord(Base):
+    __tablename__ = 'triage_records'
+
+    triage_id = Column(String(100), primary_key=True) # e.g. TR-PT-A100-timestamp
+    patient_id = Column(String(50), ForeignKey('patients.patient_id'), nullable=False)
+    hospital_id = Column(String(50), ForeignKey('hospitals.hospital_id'), nullable=False)
+    ai_suggested_level = Column(Integer, nullable=False)
+    ai_confidence_score = Column(Float, nullable=False)
+    clinician_assigned_level = Column(Integer, nullable=True) # None if accepted without override
+    action_type = Column(String(50), nullable=False) # ACCEPTED, OVERRIDDEN, AUTO_ESCALATED
+    override_reason = Column(String(200), nullable=True)
+    clinical_notes = Column(Text, nullable=True)
+    created_by = Column(String(50), ForeignKey('staffs.staff_id'), nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+class TriageAuditLog(Base):
+    __tablename__ = 'triage_audit_logs'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    patient_id = Column(String(50), ForeignKey('patients.patient_id'), nullable=False)
+    hospital_id = Column(String(50), ForeignKey('hospitals.hospital_id'), nullable=False)
+    staff_id = Column(String(50), ForeignKey('staffs.staff_id'), nullable=False)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
     ai_suggested_level = Column(Integer, nullable=False)
     ai_confidence_score = Column(Float, nullable=False)
     clinician_assigned_level = Column(Integer, nullable=False)
-    
     action_type = Column(Enum(ActionTypeEnum), nullable=False)
     override_reason = Column(Enum(OverrideReasonEnum), nullable=True)
     clinical_notes = Column(Text, nullable=True)
-    top_3_drivers = Column(JSON, nullable=False)
+    top_3_drivers = Column(JSON, nullable=True)
 
     def to_dict(self):
         return {
             "id": self.id,
             "patient_id": self.patient_id,
+            "hospital_id": self.hospital_id,
             "staff_id": self.staff_id,
             "timestamp": self.timestamp.isoformat(),
             "ai_suggested_level": self.ai_suggested_level,
@@ -91,10 +169,25 @@ class TriageAuditLog(Base):
             "top_3_drivers": self.top_3_drivers
         }
 
+class AuditLog(Base):
+    __tablename__ = 'audit_logs'
 
-# This prototype already has a SQLite database in use.  Add the registration
-# columns when opening an older database instead of requiring a destructive reset.
+    log_id = Column(Integer, primary_key=True, autoincrement=True)
+    hospital_id = Column(String(50), ForeignKey('hospitals.hospital_id'), nullable=False)
+    staff_id = Column(String(50), ForeignKey('staffs.staff_id'), nullable=False)
+    staff_role = Column(String(50), nullable=False)
+    action = Column(String(100), nullable=False) # e.g. Login, Patient view
+    entity_type = Column(String(50), nullable=False) # patient, triage, staff, auth
+    entity_id = Column(String(50), nullable=False)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    details = Column(Text, nullable=True)
+
+# Setup SQLite Database for the prototype
+engine = create_engine("sqlite:///./triage_database.db", connect_args={"check_same_thread": False})
 Base.metadata.create_all(bind=engine)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Migration script to add registration columns to patient database if they do not exist
 with engine.begin() as connection:
     existing_columns = {
         row[1] for row in connection.execute(text("PRAGMA table_info(patients)"))
@@ -110,3 +203,149 @@ with engine.begin() as connection:
     for column_name, column_type in patient_column_migrations.items():
         if column_name not in existing_columns:
             connection.execute(text(f"ALTER TABLE patients ADD COLUMN {column_name} {column_type}"))
+
+def get_hash(password: str) -> str:
+    salt = bcrypt.gensalt()
+    return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
+
+# Database Seeding helper
+def seed_database():
+    db = SessionLocal()
+    try:
+        # 1. Seed Permissions
+        permissions_data = [
+            ("patient:create", "Create patient record"),
+            ("patient:view", "View patient details"),
+            ("patient:update", "Update patient record"),
+            ("triage:create", "Evaluate patient triage"),
+            ("triage:view", "View triage records"),
+            ("triage:update", "Modify triage records"),
+            ("vitals:create", "Record vital signs"),
+            ("vitals:view", "View vital signs"),
+            ("vitals:update", "Modify vital signs"),
+            ("ai:view", "View AI clinical insights"),
+            ("ai:override", "Override AI recommendations"),
+            ("alert:view", "View clinical alerts"),
+            ("alert:acknowledge", "Acknowledge clinical alerts"),
+            ("staff:create", "Create new staff accounts"),
+            ("staff:view", "View staff records"),
+            ("staff:update", "Modify staff profiles"),
+            ("staff:deactivate", "Deactivate staff accounts"),
+            ("hospital:view", "View hospital information"),
+            ("hospital:update", "Update hospital settings"),
+            ("audit:view", "View audit trails")
+        ]
+        
+        existing_perms = {p.permission_id for p in db.query(Permission).all()}
+        for pid, desc in permissions_data:
+            if pid not in existing_perms:
+                db.add(Permission(permission_id=pid, description=desc))
+        db.commit()
+
+        # 2. Seed Roles
+        roles_data = [
+            ("HOSPITAL_ADMINISTRATOR", "Hospital Administrator", "Administrative management only"),
+            ("TRIAGE_NURSE", "Triage Nurse", "Intake and early vital assessments"),
+            ("EMERGENCY_PHYSICIAN", "Emergency Physician", "Emergency physician diagnosis and treatment"),
+            ("STAFF_NURSE", "Staff Nurse", "General clinical ward treatment"),
+            ("EMERGENCY_TECHNICIAN", "Emergency Technician", "Technical vitals recording and assistant"),
+            ("CLINICAL_DIRECTOR", "Clinical Director", "Operational overview and auditing")
+        ]
+        
+        existing_roles = {r.role_id for r in db.query(Role).all()}
+        for rid, name, desc in roles_data:
+            if rid not in existing_roles:
+                db.add(Role(role_id=rid, name=name, description=desc))
+        db.commit()
+
+        # 3. Seed Role-Permissions
+        role_permissions_map = {
+            "HOSPITAL_ADMINISTRATOR": [
+                "staff:create", "staff:view", "staff:update", "staff:deactivate",
+                "hospital:view", "hospital:update", "audit:view"
+            ],
+            "TRIAGE_NURSE": [
+                "patient:create", "patient:view", "triage:create", "triage:view",
+                "triage:update", "vitals:create", "vitals:view", "ai:view", "alert:view"
+            ],
+            "EMERGENCY_PHYSICIAN": [
+                "patient:view", "patient:update", "triage:view", "vitals:view",
+                "ai:view", "ai:override", "alert:view", "alert:acknowledge"
+            ],
+            "STAFF_NURSE": [
+                "patient:view", "vitals:create", "vitals:view", "triage:view",
+                "ai:view", "alert:view"
+            ],
+            "EMERGENCY_TECHNICIAN": [
+                "patient:view", "vitals:create", "vitals:view"
+            ],
+            "CLINICAL_DIRECTOR": [
+                "patient:view", "triage:view", "vitals:view", "ai:view",
+                "alert:view", "alert:acknowledge", "audit:view"
+            ]
+        }
+
+        role_objs = {r.role_id: r for r in db.query(Role).all()}
+        perm_objs = {p.permission_id: p for p in db.query(Permission).all()}
+
+        for rid, perm_ids in role_permissions_map.items():
+            role_obj = role_objs.get(rid)
+            if role_obj:
+                current_mapped = {p.permission_id for p in role_obj.permissions}
+                for pid in perm_ids:
+                    if pid not in current_mapped and pid in perm_objs:
+                        role_obj.permissions.append(perm_objs[pid])
+        db.commit()
+
+        # 4. Seed Demo Hospital
+        demo_hosp = db.query(Hospital).filter_by(hospital_id="DEMO001").first()
+        if not demo_hosp:
+            demo_hosp = Hospital(
+                hospital_id="DEMO001",
+                name="Demo General Hospital",
+                hospital_type="Teaching Hospital",
+                address="100 Medical Plaza Dr",
+                city="Metropolis",
+                state="NY",
+                country="USA",
+                postal_code="10001",
+                registration_number="REG-778899",
+                emergency_department_available=True,
+                ed_capacity=75,
+                verification_status="VERIFIED"
+            )
+            db.add(demo_hosp)
+            db.commit()
+
+        # 5. Seed Demo Staff
+        staff_data = [
+            ("ADMIN001", "DEMO001", "Admin User", "EMP-001", "admin@demohospital.com", "555-0100", "Administration", "Hospital Admin", "HOSPITAL_ADMINISTRATOR", "DemoAdmin123!"),
+            ("DOC001", "DEMO001", "Dr. Sarah Jenkins", "EMP-002", "doctor@demohospital.com", "555-0101", "Emergency Medicine", "Attending Physician", "EMERGENCY_PHYSICIAN", "DemoDoctor123!"),
+            ("NUR001", "DEMO001", "Nurse Kelly Adams", "EMP-003", "nurse@demohospital.com", "555-0102", "Emergency Medicine", "Triage Nurse", "TRIAGE_NURSE", "DemoNurse123!"),
+            ("TECH001", "DEMO001", "Tech Bob Miller", "EMP-004", "tech@demohospital.com", "555-0103", "Emergency Medicine", "ED Technician", "EMERGENCY_TECHNICIAN", "DemoTech123!"),
+            ("DIR001", "DEMO001", "Dr. Marcus Vance", "EMP-005", "director@demohospital.com", "555-0104", "Emergency Medicine", "Clinical Director", "CLINICAL_DIRECTOR", "DemoDirector123!")
+        ]
+
+        for sid, hid, name, empid, email, phone, dept, desig, role_id, pwd in staff_data:
+            existing_staff = db.query(Staff).filter_by(staff_id=sid, hospital_id=hid).first()
+            if not existing_staff:
+                new_staff = Staff(
+                    staff_id=sid,
+                    hospital_id=hid,
+                    full_name=name,
+                    employee_id=empid,
+                    official_email=email,
+                    phone_number=phone,
+                    department=dept,
+                    designation=desig,
+                    professional_registration_number="LIC-12345" if role_id != "HOSPITAL_ADMINISTRATOR" else None,
+                    years_of_experience=10 if role_id != "HOSPITAL_ADMINISTRATOR" else None,
+                    role_id=role_id,
+                    password_hash=get_hash(pwd),
+                    status="ACTIVE"
+                )
+                db.add(new_staff)
+        db.commit()
+
+    finally:
+        db.close()
