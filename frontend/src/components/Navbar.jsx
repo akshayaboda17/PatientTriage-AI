@@ -3,7 +3,7 @@ import { useAuth, DEMO_USERS } from '../context/AuthContext';
 import { 
   Activity, Bell, Users, ShieldAlert, FileText, Building2, 
   RefreshCw, AlertCircle, LayoutDashboard, UserPlus, LogIn,
-  BarChart2, ShieldCheck, Stethoscope, ChevronDown
+  BarChart2, ShieldCheck, Stethoscope, ChevronDown, Cpu
 } from 'lucide-react';
 
 export const Navbar = ({ 
@@ -170,6 +170,21 @@ export const Navbar = ({
               >
                 <BarChart2 className="w-3.5 h-3.5" />
                 <span>Analytics</span>
+              </button>
+            )}
+
+            {/* MLOps Governance Tab (Admin & Director) */}
+            {['CLINICAL_DIRECTOR', 'HOSPITAL_ADMIN'].includes(currentStaff.role) && (
+              <button
+                onClick={() => setActiveTab('mlops')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  activeTab === 'mlops'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                }`}
+              >
+                <Cpu className="w-3.5 h-3.5 text-indigo-400" />
+                <span>MLOps &amp; Governance</span>
               </button>
             )}
 

@@ -192,6 +192,22 @@ export const PhysicianReviewWorkspace = ({ encounterId, onBack, onDecisionSaved 
 
         {/* Right Column: AI Risk & Explainability */}
         <div className="space-y-6">
+          {/* Active Deterioration Alerts if any */}
+          {alerts && alerts.length > 0 && (
+            <div className="bg-rose-950/40 border border-rose-600/70 p-4 rounded-2xl shadow-xl space-y-2">
+              <div className="flex items-center gap-2 text-rose-300 font-bold text-xs">
+                <ShieldAlert className="w-4 h-4 text-rose-400 animate-pulse" />
+                <span>Active Longitudinal Deterioration Alerts ({alerts.length})</span>
+              </div>
+              {alerts.map((alt) => (
+                <div key={alt.alert_id} className="bg-rose-950/60 p-2.5 rounded-xl border border-rose-800/60 text-xs text-rose-200">
+                  <div className="font-semibold text-white">{alt.summary}</div>
+                  <div className="text-[10px] text-rose-300/80 mt-0.5">Status: {alt.status} • Severity: {alt.severity}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
           <AiRiskCard aiRisk={ai_risk} />
           <ExplainabilityCard aiExplanation={ai_explanation} />
           <PhysicianAssessmentHistory assessments={physician_assessments} />

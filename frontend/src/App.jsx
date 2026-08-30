@@ -10,12 +10,13 @@ import { PhysicianReviewWorkspace } from './components/PhysicianReviewWorkspace'
 import { AuditLogView } from './components/AuditLogView';
 import { StaffManagementView } from './components/StaffManagementView';
 import { AnalyticsView } from './components/AnalyticsView';
+import { MLOpsDashboard } from './components/mlops/MLOpsDashboard';
 import { PatientRegistrationModal } from './components/PatientRegistrationModal';
 import { LoginModal } from './components/LoginModal';
 
 const MainAppContent = () => {
   const { authHeaders } = useAuth();
-  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard', 'queue', 'alerts', 'audit', 'staff', 'analytics', 'patient-detail', 'physician-review'
+  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard', 'queue', 'alerts', 'audit', 'staff', 'analytics', 'mlops', 'patient-detail', 'physician-review'
   const [selectedEncounterId, setSelectedEncounterId] = useState(null);
   const [unacknowledgedCount, setUnacknowledgedCount] = useState(0);
 
@@ -144,6 +145,9 @@ const MainAppContent = () => {
 
         {/* Clinical Analytics */}
         {activeTab === 'analytics' && <AnalyticsView />}
+
+        {/* MLOps & Model Governance */}
+        {activeTab === 'mlops' && <MLOpsDashboard />}
 
       </main>
 
