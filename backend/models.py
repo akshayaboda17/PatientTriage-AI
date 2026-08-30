@@ -373,13 +373,16 @@ class AIRiskAssessment(Base):
     observation_id = Column(Integer, ForeignKey('clinical_observations.id'), nullable=True)
     
     risk_score = Column(Float, nullable=False) # 0.0 - 100.0
+    risk_probability = Column(Float, nullable=True) # 0.0 - 1.0
     risk_category = Column(Enum(AIRiskCategoryEnum), nullable=False)
     predicted_triage_level = Column(Integer, nullable=False)
     confidence_score = Column(Float, nullable=False)
     shock_index = Column(Float, nullable=True)
     qsofa = Column(Integer, nullable=True)
-    model_name = Column(String(100), default="PatientTriage Risk Model", nullable=True)
-    model_version = Column(String(50), default="1.0.0", nullable=False)
+    mews = Column(Integer, nullable=True)
+    model_name = Column(String(100), default="PatientTriage Decompensation Risk Classifier", nullable=True)
+    model_version = Column(String(50), default="1.0", nullable=False)
+    input_features_json = Column(JSON, nullable=True)
     assessed_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
 
     encounter = relationship("EDEncounter", back_populates="ai_risk_assessments")
@@ -393,13 +396,16 @@ class AIRiskAssessment(Base):
             "patient_id": self.patient_id,
             "encounter_id": self.encounter_id,
             "risk_score": self.risk_score,
+            "risk_probability": self.risk_probability,
             "risk_category": self.risk_category.value,
             "predicted_triage_level": self.predicted_triage_level,
             "confidence_score": self.confidence_score,
             "shock_index": self.shock_index,
             "qsofa": self.qsofa,
+            "mews": self.mews,
             "model_name": self.model_name,
             "model_version": self.model_version,
+            "input_features": self.input_features_json,
             "assessed_at": self.assessed_at.isoformat() if self.assessed_at else None
         }
 

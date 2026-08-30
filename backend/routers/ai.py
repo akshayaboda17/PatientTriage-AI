@@ -6,15 +6,14 @@ from sqlalchemy.orm import Session
 
 from models import (
     EDEncounter, ClinicalObservation, AIRiskAssessment,
-    AIRiskCategoryEnum, Staff, ActorTypeEnum, AuditResultEnum
+    AIExplanation, AIRiskCategoryEnum, Staff, ActorTypeEnum, AuditResultEnum
 )
 from schemas.ai_schemas import AIAssessmentOutputSchema, LegacyPatientInput, LegacyOverrideInput
 from services.audit_service import AuditService
 from services.rbac import get_db, require_permission
-from triage_engine import TriageEngine
+from services.ml_inference_service import MLInferenceService
 
 router = APIRouter(tags=["AI Decision Support & Explainability"])
-legacy_engine = TriageEngine()
 
 @router.post("/api/encounters/{encounter_id}/ai-assessment")
 def generate_ai_risk_assessment(
@@ -23,8 +22,9 @@ def generate_ai_risk_assessment(
     db: Session = Depends(get_db)
 ):
     """
-    Generates AI risk assessment with strict data minimization (anonymized clinical parameters only)
-    and rigorous schema output validation.
+    Generates point-of-care AI clinical risk assessment using the trained supervised ML model (v1.0),
+    enforcing strict patient data minimization, deterministic safety interlocks, local explainability,
+    and immutable audit trail logging.
     """
     enc = db.query(EDEncounter).filter(
         EDEncounter.encounter_id == encounter_id,
@@ -32,72 +32,103 @@ def generate_ai_risk_assessment(
     ).first()
 
     if not enc:
-        raise HTTPException(status_code=404, detail=f"Encounter '{encounter_id}' not found.")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Encounter '{encounter_id}' not found in hospital '{staff.hospital_id}'."
+        )
 
     patient = enc.patient
-    latest_obs = db.query(ClinicalObservation).filter(
+    observations = db.query(ClinicalObservation).filter(
         ClinicalObservation.encounter_id == encounter_id
-    ).order_by(ClinicalObservation.timestamp.desc()).first()
+    ).order_by(ClinicalObservation.timestamp.asc()).all()
 
-    # Data Minimization: Send ONLY clinical parameters to ML engine; never PHI (names, phone, mrn)
-    minimized_features = {
-        "age": patient.age,
-        "gender": patient.gender,
-        "chief_complaint": enc.chief_complaint,
-        "hr": latest_obs.hr if latest_obs else 80,
-        "sbp": latest_obs.sbp if latest_obs else 120,
-        "dbp": latest_obs.dbp if latest_obs else 80,
-        "rr": latest_obs.rr if latest_obs else 16,
-        "spo2": latest_obs.spo2 if latest_obs else 98,
-        "temp": latest_obs.temp if latest_obs else 37.0,
-        "pain_score": latest_obs.pain_score if latest_obs else 0,
-        "gcs": latest_obs.gcs if latest_obs else 15
-    }
+    latest_obs = observations[-1] if observations else None
+    prior_obs = observations[-2] if len(observations) >= 2 else None
+    obs_count = len(observations)
 
+    # Execute Supervised ML Inference Pipeline
     try:
-        raw_result = legacy_engine.evaluate_patient(minimized_features)
-        
-        # Schema validation of AI output
-        raw_score = float(raw_result.get("confidence_score", 75.0))
-        normalized_score = raw_score / 100.0 if raw_score > 1.0 else raw_score
-        level = int(raw_result.get("triage_level", 3))
-        
-        cat_map = {
-            1: AIRiskCategoryEnum.CRITICAL,
-            2: AIRiskCategoryEnum.HIGH,
-            3: AIRiskCategoryEnum.MODERATE,
-            4: AIRiskCategoryEnum.LOW,
-            5: AIRiskCategoryEnum.LOW
-        }
-        risk_cat = cat_map.get(level, AIRiskCategoryEnum.MODERATE)
-
-        validated_output = AIAssessmentOutputSchema(
-            risk_score=min(max(normalized_score, 0.0), 1.0),
-            risk_category=risk_cat,
-            predicted_level=level,
-            confidence=normalized_score
+        eval_result = MLInferenceService.evaluate_encounter(
+            patient=patient,
+            encounter=enc,
+            current_obs=latest_obs,
+            prior_obs=prior_obs,
+            obs_index=obs_count,
+            model_version="1.0"
         )
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"AI risk engine returned invalid or malformed output: {e}")
+        # Clinical Safety: Never fabricate a prediction upon model failure.
+        AuditService.log_event(
+            db=db,
+            hospital_id=staff.hospital_id,
+            action="AI_ASSESSMENT_FAILED",
+            entity_type="AIRiskAssessment",
+            entity_id=encounter_id,
+            actor_id="AI_SYSTEM",
+            actor_role="AI_SYSTEM",
+            actor_type=ActorTypeEnum.AI_SYSTEM,
+            patient_id=enc.patient_id,
+            encounter_id=enc.encounter_id,
+            result=AuditResultEnum.FAILURE,
+            metadata={"error_detail": str(e)},
+            auto_commit=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"AI inference engine currently unavailable or input processing failed: {e}"
+        )
 
-    # Save AIRiskAssessment
+    inf = eval_result["inference"]
+    exp = eval_result["explanations"]
+
+    # Category Mapping
+    category_map = {
+        "CRITICAL": AIRiskCategoryEnum.CRITICAL,
+        "HIGH": AIRiskCategoryEnum.HIGH,
+        "MODERATE": AIRiskCategoryEnum.MODERATE,
+        "LOW": AIRiskCategoryEnum.LOW
+    }
+    risk_cat = category_map.get(inf["risk_category"], AIRiskCategoryEnum.MODERATE)
+
+    # 1. Persist AIRiskAssessment
     ai_risk = AIRiskAssessment(
         assessment_id=f"AI-{staff.hospital_id[:4]}-{uuid.uuid4().hex[:6].upper()}",
         hospital_id=staff.hospital_id,
         patient_id=enc.patient_id,
         encounter_id=enc.encounter_id,
-        predicted_triage_level=validated_output.predicted_level,
-        risk_score=validated_output.risk_score,
-        risk_category=validated_output.risk_category,
-        confidence_score=validated_output.confidence,
-        model_name="PatientTriage TriageEngine",
-        model_version="1.0-rf",
+        observation_id=latest_obs.id if latest_obs else None,
+        risk_score=float(inf["risk_score"]),
+        risk_probability=float(inf["risk_probability"]),
+        risk_category=risk_cat,
+        predicted_triage_level=int(inf["predicted_triage_level"]),
+        confidence_score=float(inf["confidence_score"]),
+        shock_index=float(inf["shock_index"]),
+        qsofa=int(inf["qsofa"]),
+        mews=int(inf["mews"]),
+        model_name=inf["model_name"],
+        model_version=inf["model_version"],
+        input_features_json=inf["features_snapshot"],
         assessed_at=datetime.datetime.utcnow()
     )
     db.add(ai_risk)
     db.commit()
     db.refresh(ai_risk)
 
+    # 2. Persist Synchronized AIExplanation
+    ai_exp = AIExplanation(
+        hospital_id=staff.hospital_id,
+        patient_id=enc.patient_id,
+        encounter_id=enc.encounter_id,
+        risk_assessment_id=ai_risk.id,
+        explanation_method=exp["method"],
+        top_features=exp["top_features"],
+        summary=exp["summary"],
+        generated_at=datetime.datetime.utcnow()
+    )
+    db.add(ai_exp)
+    db.commit()
+
+    # 3. Log Audit Event (Task 11)
     AuditService.log_event(
         db=db,
         hospital_id=staff.hospital_id,
@@ -110,15 +141,27 @@ def generate_ai_risk_assessment(
         patient_id=enc.patient_id,
         encounter_id=enc.encounter_id,
         result=AuditResultEnum.SUCCESS,
-        metadata={"predicted_level": validated_output.predicted_level, "risk_category": validated_output.risk_category.value},
+        metadata={
+            "predicted_level": ai_risk.predicted_triage_level,
+            "risk_score": ai_risk.risk_score,
+            "risk_category": ai_risk.risk_category.value,
+            "model_version": ai_risk.model_version,
+            "safety_net_triggered": inf.get("safety_net_triggered", False)
+        },
         auto_commit=True
     )
 
-    return {"message": "AI Assessment generated.", "assessment": ai_risk.to_dict()}
+    return {
+        "message": "AI Clinical Risk Assessment generated successfully.",
+        "assessment": ai_risk.to_dict(),
+        "explanation": ai_exp.to_dict()
+    }
 
 # Legacy endpoints for backward compatibility
 @router.post("/api/triage")
 def legacy_triage_patient(patient: LegacyPatientInput, db: Session = Depends(get_db)):
+    from triage_engine import TriageEngine
+    legacy_engine = TriageEngine()
     patient_data = patient.dict()
     triage_result = legacy_engine.evaluate_patient(patient_data)
     return {"message": "Triage complete", "result": triage_result}
