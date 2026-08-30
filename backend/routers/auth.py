@@ -1,0 +1,168 @@
+import time
+from collections import defaultdict
+from typing import Dict, List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Request, status
+from sqlalchemy.orm import Session
+
+from models import Hospital, Staff, ActorTypeEnum, AuditResultEnum
+from schemas.auth_schemas import LoginRequest
+from services.audit_service import AuditService
+from services.rbac import (
+    get_db, get_current_staff,
+    get_staff_permissions, create_session, revoke_session,
+    verify_password
+)
+
+router = APIRouter(tags=["Authentication"])
+
+# Login Rate Limiting (In-Memory sliding window)
+LOGIN_FAILED_ATTEMPTS: Dict[str, List[float]] = defaultdict(list)
+MAX_LOGIN_ATTEMPTS = 5
+LOGIN_RATE_WINDOW_SECONDS = 60
+
+def check_login_rate_limit(key: str) -> bool:
+    now = time.time()
+    LOGIN_FAILED_ATTEMPTS[key] = [t for t in LOGIN_FAILED_ATTEMPTS[key] if now - t < LOGIN_RATE_WINDOW_SECONDS]
+    return len(LOGIN_FAILED_ATTEMPTS[key]) < MAX_LOGIN_ATTEMPTS
+
+def record_login_failure(key: str) -> None:
+    LOGIN_FAILED_ATTEMPTS[key].append(time.time())
+
+def reset_login_rate_limit(key: str) -> None:
+    if key in LOGIN_FAILED_ATTEMPTS:
+        del LOGIN_FAILED_ATTEMPTS[key]
+
+@router.post("/api/auth/login")
+def login(creds: LoginRequest, raw_req: Request, db: Session = Depends(get_db)):
+    """
+    Authenticates staff with rate limiting, password verification, and session token generation.
+    Audits successful logins and failed login attempts without leaking credentials.
+    """
+    client_ip = raw_req.client.host if (raw_req.client and raw_req.client.host) else "127.0.0.1"
+    rate_key = f"{client_ip}:{creds.staff_id}"
+
+    if not check_login_rate_limit(rate_key):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed login attempts. Rate limit exceeded. Please wait 60 seconds."
+        )
+
+    query = db.query(Staff).filter(Staff.staff_id == creds.staff_id)
+    if creds.hospital_id:
+        query = query.filter(Staff.hospital_id == creds.hospital_id)
+    staff = query.first()
+
+    if not staff or not verify_password(creds.password, staff.password_hash):
+        record_login_failure(rate_key)
+        AuditService.log_event(
+            db=db,
+            hospital_id=creds.hospital_id or (staff.hospital_id if staff else "SYSTEM"),
+            action="LOGIN_FAILURE",
+            entity_type="AUTHENTICATION",
+            entity_id=creds.staff_id,
+            actor_id=creds.staff_id,
+            actor_role=staff.role.value if staff else "UNKNOWN",
+            actor_type=ActorTypeEnum.HUMAN,
+            result=AuditResultEnum.DENIED,
+            metadata={"reason": "Invalid credentials provided"},
+            auto_commit=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid staff ID or password."
+        )
+
+    if not staff.is_active:
+        AuditService.log_event(
+            db=db,
+            hospital_id=staff.hospital_id,
+            action="LOGIN_FAILURE",
+            entity_type="AUTHENTICATION",
+            entity_id=staff.staff_id,
+            actor_id=staff.staff_id,
+            actor_name=staff.name,
+            actor_role=staff.role.value,
+            actor_type=ActorTypeEnum.HUMAN,
+            result=AuditResultEnum.DENIED,
+            metadata={"reason": "Staff account deactivated"},
+            auto_commit=True
+        )
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Staff account has been deactivated."
+        )
+
+    # Success: reset rate limit tracking
+    reset_login_rate_limit(rate_key)
+
+    AuditService.log_event(
+        db=db,
+        hospital_id=staff.hospital_id,
+        action="LOGIN_SUCCESS",
+        entity_type="AUTHENTICATION",
+        entity_id=staff.staff_id,
+        actor_id=staff.staff_id,
+        actor_name=staff.name,
+        actor_role=staff.role.value,
+        actor_type=ActorTypeEnum.HUMAN,
+        result=AuditResultEnum.SUCCESS,
+        metadata={"role": staff.role.value},
+        auto_commit=True
+    )
+
+    hospital = db.query(Hospital).filter(Hospital.hospital_code == staff.hospital_id).first()
+    permissions = list(get_staff_permissions(staff.role))
+    token = create_session(staff.staff_id, staff.hospital_id)
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "staff": staff.to_dict(),
+        "hospital": hospital.to_dict() if hospital else None,
+        "permissions": permissions
+    }
+
+@router.post("/api/auth/logout")
+def logout(
+    raw_req: Request,
+    staff: Staff = Depends(get_current_staff),
+    db: Session = Depends(get_db)
+):
+    """
+    Logs out authenticated staff member, invalidates session token, and creates an audit record.
+    """
+    auth_header = raw_req.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header[7:].strip()
+        revoke_session(token)
+    elif raw_req.headers.get("X-Staff-Id"):
+        revoke_session(raw_req.headers.get("X-Staff-Id"))
+
+    AuditService.log_event(
+        db=db,
+        hospital_id=staff.hospital_id,
+        action="LOGOUT",
+        entity_type="AUTHENTICATION",
+        entity_id=staff.staff_id,
+        actor_id=staff.staff_id,
+        actor_name=staff.name,
+        actor_role=staff.role.value,
+        actor_type=ActorTypeEnum.HUMAN,
+        result=AuditResultEnum.SUCCESS,
+        auto_commit=True
+    )
+    return {"status": "success", "message": "Successfully logged out and session revoked."}
+
+@router.get("/api/auth/me")
+def get_current_user_profile(staff: Staff = Depends(get_current_staff), db: Session = Depends(get_db)):
+    hospital = db.query(Hospital).filter(Hospital.hospital_code == staff.hospital_id).first()
+    return {
+        "staff": staff.to_dict(),
+        "hospital": hospital.to_dict() if hospital else None,
+        "permissions": list(get_staff_permissions(staff.role))
+    }
+
+@router.get("/api/hospitals")
+def list_hospitals(db: Session = Depends(get_db)):
+    hospitals = db.query(Hospital).filter(Hospital.is_active == True).all()
+    return {"hospitals": [h.to_dict() for h in hospitals]}

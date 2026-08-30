@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { 
-  ArrowLeft, Activity, Heart, ShieldAlert, AlertTriangle, AlertOctagon,
-  Clock, CheckCircle2, FileText, PlusCircle, Check, XCircle, Sparkles,
-  TrendingUp, TrendingDown, UserCheck, Stethoscope, ChevronDown, ChevronUp,
-  Edit2, RefreshCw, AlertCircle, Info, Scale
+  ArrowLeft, Activity, ShieldAlert, PlusCircle, CheckCircle2, Stethoscope
 } from 'lucide-react';
 import { ObservationCorrectionModal } from './ObservationCorrectionModal';
+import { PatientDemographicsCard } from './patient/PatientDemographicsCard';
+import { VitalsProgressionTable } from './patient/VitalsProgressionTable';
+import { AiRiskCard } from './patient/AiRiskCard';
+import { ExplainabilityCard } from './patient/ExplainabilityCard';
+import { ClinicalTimeline } from './patient/ClinicalTimeline';
 
 export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertStateChanged }) => {
   const { authHeaders, hasPermission, addToast, currentStaff } = useAuth();
@@ -36,7 +38,7 @@ export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertSt
 
   // Alert Resolution modal state
   const [selectedAlertForAction, setSelectedAlertForAction] = useState(null);
-  const [actionType, setActionType] = useState(null); // 'resolve' or 'dismiss'
+  const [actionType, setActionType] = useState(null);
   const [actionReason, setActionReason] = useState('');
   const [submittingAction, setSubmittingAction] = useState(false);
 
@@ -207,7 +209,7 @@ export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertSt
   return (
     <div className="space-y-6">
       
-      {/* Top Back Nav & Quick Actions */}
+      {/* Top Nav & Quick Actions */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <button
           onClick={onBack}
@@ -239,43 +241,7 @@ export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertSt
       </div>
 
       {/* Patient Demographic Banner */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-2xl bg-slate-800 border border-slate-700 flex items-center justify-center text-cyan-400 font-bold text-lg shrink-0">
-              {patient.first_name[0]}{patient.last_name[0]}
-            </div>
-            <div>
-              <div className="flex items-center gap-2.5">
-                <h2 className="text-xl font-black text-white">{patient.full_name}</h2>
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-cyan-950 text-cyan-300 border border-cyan-800">
-                  {encounter.status}
-                </span>
-                {triage && (
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-950 text-amber-300 border border-amber-800">
-                    ESI Level {triage.triage_level} ({triage.acuity_category})
-                  </span>
-                )}
-              </div>
-              
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400 mt-1 font-mono">
-                <span>ID: <strong className="text-slate-200">{patient.patient_id}</strong></span>
-                <span>MRN: <strong className="text-slate-200">{patient.mrn || 'N/A'}</strong></span>
-                <span>Encounter: <strong className="text-slate-200">{encounter.encounter_id}</strong></span>
-                <span>Age: <strong className="text-slate-200">{patient.age}y</strong></span>
-                <span>Gender: <strong className="text-slate-200">{patient.gender}</strong></span>
-                <span>Bed: <strong className="text-slate-200">{encounter.bed_number || 'Waiting Room'}</strong></span>
-                <span>Arrival: <strong className="text-slate-200">{encounter.arrival_mode}</strong></span>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800/80 max-w-sm w-full">
-            <div className="text-[10px] uppercase font-bold text-slate-400">Chief Complaint</div>
-            <div className="text-xs font-semibold text-slate-100 mt-0.5">{encounter.chief_complaint}</div>
-          </div>
-        </div>
-      </div>
+      <PatientDemographicsCard patient={patient} encounter={encounter} triage={triage} />
 
       {/* Record New Vitals Form (Expandable) */}
       {showVitalsForm && (
@@ -508,240 +474,22 @@ export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertSt
         
         {/* Left Column: Longitudinal Vitals & Timeline (Span 2) */}
         <div className="lg:col-span-2 space-y-6">
-          
-          {/* Longitudinal Vital Signs Table */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Heart className="w-5 h-5 text-rose-400" />
-                <h3 className="text-base font-bold text-white">Longitudinal Vital Signs Progression</h3>
-              </div>
-              <span className="text-xs text-slate-400 font-mono">{observations.length} readings recorded</span>
-            </div>
-
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-300">
-                <thead className="bg-slate-950/80 text-slate-400 uppercase text-[10px] font-bold border-b border-slate-800">
-                  <tr>
-                    <th className="px-3 py-2.5">Time</th>
-                    <th className="px-3 py-2.5">SpO₂ (%)</th>
-                    <th className="px-3 py-2.5">HR (bpm)</th>
-                    <th className="px-3 py-2.5">RR (/min)</th>
-                    <th className="px-3 py-2.5">BP (mmHg)</th>
-                    <th className="px-3 py-2.5">Temp (°C)</th>
-                    <th className="px-3 py-2.5">GCS</th>
-                    <th className="px-3 py-2.5">Clinician</th>
-                    <th className="px-3 py-2.5 text-right">Edit</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800/60 font-mono">
-                  {observations.map((obs, idx) => {
-                    const prev = idx > 0 ? observations[idx - 1] : null;
-                    const spo2Delta = prev ? obs.spo2 - prev.spo2 : 0;
-                    const hrDelta = prev ? obs.hr - prev.hr : 0;
-                    const rrDelta = prev ? obs.rr - prev.rr : 0;
-
-                    return (
-                      <tr key={obs.id || idx} className="hover:bg-slate-800/30">
-                        <td className="px-3 py-3 text-slate-400">
-                          {new Date(obs.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                          {obs.is_corrected && (
-                            <span className="ml-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-950 text-purple-300 border border-purple-800">
-                              CORRECTED
-                            </span>
-                          )}
-                        </td>
-                        
-                        {/* SpO2 with delta */}
-                        <td className="px-3 py-3">
-                          <span className={`font-bold ${obs.spo2 < 90 ? 'text-rose-400' : 'text-slate-200'}`}>
-                            {obs.spo2}%
-                          </span>
-                          {spo2Delta !== 0 && (
-                            <span className={`ml-1.5 text-[10px] ${spo2Delta < 0 ? 'text-rose-400 font-bold' : 'text-emerald-400'}`}>
-                              ({spo2Delta > 0 ? `+${spo2Delta}` : spo2Delta})
-                            </span>
-                          )}
-                        </td>
-
-                        {/* HR with delta */}
-                        <td className="px-3 py-3">
-                          <span className={`font-bold ${obs.hr >= 110 ? 'text-amber-400' : 'text-slate-200'}`}>
-                            {obs.hr}
-                          </span>
-                          {hrDelta !== 0 && (
-                            <span className={`ml-1.5 text-[10px] ${hrDelta > 0 ? 'text-rose-400 font-bold' : 'text-slate-400'}`}>
-                              ({hrDelta > 0 ? `+${hrDelta}` : hrDelta})
-                            </span>
-                          )}
-                        </td>
-
-                        {/* RR with delta */}
-                        <td className="px-3 py-3">
-                          <span className={`font-bold ${obs.rr >= 24 ? 'text-rose-400' : 'text-slate-200'}`}>
-                            {obs.rr}
-                          </span>
-                          {rrDelta !== 0 && (
-                            <span className={`ml-1.5 text-[10px] ${rrDelta > 0 ? 'text-rose-400 font-bold' : 'text-slate-400'}`}>
-                              ({rrDelta > 0 ? `+${rrDelta}` : rrDelta})
-                            </span>
-                          )}
-                        </td>
-
-                        <td className="px-3 py-3 text-slate-200">{obs.sbp}/{obs.dbp || '-'}</td>
-                        <td className="px-3 py-3 text-slate-300">{obs.temp || '-'}</td>
-                        <td className="px-3 py-3 text-slate-300">{obs.gcs}</td>
-                        <td className="px-3 py-3 text-slate-400 text-[11px] font-sans">{obs.recorded_by}</td>
-                        <td className="px-3 py-3 text-right">
-                          {hasPermission('vitals:update') && (
-                            <button
-                              onClick={() => setSelectedObsForCorrection(obs)}
-                              className="p-1 text-slate-400 hover:text-purple-400 hover:bg-slate-800 rounded transition-colors"
-                              title="Correct observation (with audit trail)"
-                            >
-                              <Edit2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-          {/* Unified Clinical Timeline */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
-            <div className="flex items-center gap-2">
-              <Clock className="w-5 h-5 text-cyan-400" />
-              <h3 className="text-base font-bold text-white">Unified Patient Clinical Timeline</h3>
-            </div>
-
-            <div className="relative pl-6 space-y-4 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-800">
-              {timeline.map((item, idx) => (
-                <div key={idx} className="relative group">
-                  <div className={`absolute -left-6 top-1 w-3.5 h-3.5 rounded-full border-2 border-slate-900 ${
-                    item.type.includes('ALERT') ? 'bg-rose-500 animate-pulse' :
-                    item.type === 'AI_RISK' ? 'bg-indigo-500' :
-                    item.type === 'TRIAGE' ? 'bg-amber-500' : 'bg-cyan-500'
-                  }`} />
-                  
-                  <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-3 space-y-1">
-                    <div className="flex items-center justify-between text-xs">
-                      <span className="font-bold text-slate-200">{item.title}</span>
-                      <span className="text-slate-400 font-mono text-[11px]">
-                        {new Date(item.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    </div>
-                    <p className="text-xs text-slate-400">{item.description}</p>
-                    <div className="text-[10px] text-slate-400 font-mono">Attributed to: {item.actor}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
+          <VitalsProgressionTable 
+            observations={observations} 
+            onSelectObsForCorrection={setSelectedObsForCorrection} 
+          />
+          <ClinicalTimeline timeline={timeline} />
         </div>
 
         {/* Right Column: AI Risk & Explainability (Task 7 & 8) */}
         <div className="space-y-6">
-          
-          {/* Task 7 AI Risk Assessment */}
-          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-cyan-400" />
-                <h3 className="text-sm font-bold text-white">AI Risk Assessment (Decision Support)</h3>
-              </div>
-              <span className="text-[10px] text-slate-400 font-mono">Risk Model v1.2</span>
-            </div>
-
-            {ai_risk ? (
-              <>
-                <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800 flex items-center justify-between">
-                  <div>
-                    <div className="text-[10px] uppercase font-bold text-slate-400">Predicted Risk Score</div>
-                    <div className="text-2xl font-black text-cyan-300 mt-0.5">{ai_risk.risk_score}%</div>
-                  </div>
-                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                    ai_risk.risk_category === 'HIGH' || ai_risk.risk_category === 'CRITICAL'
-                      ? 'bg-rose-950 text-rose-300 border border-rose-700'
-                      : ai_risk.risk_category === 'MODERATE'
-                      ? 'bg-amber-950 text-amber-300 border border-amber-700'
-                      : 'bg-emerald-950 text-emerald-300 border border-emerald-700'
-                  }`}>
-                    {ai_risk.risk_category} RISK
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                  <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800">
-                    <div className="text-slate-400 text-[10px]">Predicted ESI</div>
-                    <div className="font-bold text-sm text-cyan-300">Level {ai_risk.predicted_triage_level || '2'}</div>
-                  </div>
-                  <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800">
-                    <div className="text-slate-400 text-[10px]">Confidence</div>
-                    <div className="font-bold text-sm text-slate-200">{ai_risk.confidence_score || '85'}%</div>
-                  </div>
-                </div>
-
-                <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-[10px] text-slate-400 space-y-1">
-                  <div className="text-amber-400 font-bold">Notice: Clinical Decision Support</div>
-                  <p>AI provides advisory risk estimations. Clinical review and final decision are required.</p>
-                </div>
-              </>
-            ) : (
-              <div className="text-center py-4 space-y-3">
-                <p className="text-xs text-slate-400">No AI risk assessment has been generated yet for this encounter.</p>
-                <button
-                  onClick={handleGenerateAiAssessment}
-                  disabled={generatingAi}
-                  className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow-md shadow-cyan-900/30 transition-all disabled:opacity-50 inline-flex items-center gap-1.5"
-                >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>{generatingAi ? 'Generating AI Assessment...' : 'Generate AI Risk Assessment'}</span>
-                </button>
-              </div>
-            )}
-
-            {onOpenReview && hasPermission('clinical_decision:create') && (
-              <button
-                onClick={onOpenReview}
-                className="w-full py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow transition-colors flex items-center justify-center gap-1.5 mt-2"
-              >
-                <Stethoscope className="w-3.5 h-3.5" />
-                <span>Open Physician Review Console</span>
-              </button>
-            )}
-          </div>
-
-          {/* Task 8 Explainable AI */}
-          {ai_explanation && (
-            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
-              <div className="flex items-center gap-2">
-                <FileText className="w-5 h-5 text-indigo-400" />
-                <h3 className="text-sm font-bold text-white">Why This Prediction? (SHAP Drivers)</h3>
-              </div>
-
-              <p className="text-xs text-slate-300 leading-relaxed bg-slate-950/80 p-3 rounded-xl border border-slate-800">
-                {ai_explanation.summary}
-              </p>
-
-              {ai_explanation.top_features && (
-                <div className="space-y-2">
-                  <div className="text-[10px] uppercase font-bold text-slate-400">Key Feature Influence Factors</div>
-                  {ai_explanation.top_features.map((feat, idx) => (
-                    <div key={idx} className="flex items-center justify-between text-xs bg-slate-950/60 p-2 rounded-lg border border-slate-800">
-                      <span className="font-semibold text-slate-300">{feat.feature} ({feat.value})</span>
-                      <span className="font-mono font-bold text-rose-400">{feat.impact}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          )}
-
+          <AiRiskCard 
+            aiRisk={ai_risk} 
+            onGenerateAi={handleGenerateAiAssessment} 
+            generatingAi={generatingAi} 
+            onOpenReview={onOpenReview} 
+          />
+          <ExplainabilityCard aiExplanation={ai_explanation} />
         </div>
 
       </div>
