@@ -2,10 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { 
   Users, Clock, AlertTriangle, AlertOctagon, Heart, Activity, 
-  ChevronRight, RefreshCw, UserCheck, ShieldAlert, Sparkles, Filter
+  ChevronRight, RefreshCw, UserCheck, ShieldAlert, Sparkles, Filter,
+  Stethoscope
 } from 'lucide-react';
 
-export const EDQueueView = ({ onSelectPatient, onAlertStateChanged }) => {
+export const EDQueueView = ({ onSelectPatient, onReviewPatient, onAlertStateChanged }) => {
   const { authHeaders, addToast } = useAuth();
   const [queue, setQueue] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -210,13 +211,25 @@ export const EDQueueView = ({ onSelectPatient, onAlertStateChanged }) => {
 
                     {/* Action */}
                     <td className="px-4 py-4 text-right whitespace-nowrap">
-                      <button
-                        onClick={() => onSelectPatient(item.encounter_id)}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-semibold text-xs shadow transition-colors"
-                      >
-                        <span>Inspect</span>
-                        <ChevronRight className="w-3.5 h-3.5" />
-                      </button>
+                      <div className="flex items-center justify-end gap-2">
+                        {onReviewPatient && (
+                          <button
+                            onClick={() => onReviewPatient(item.encounter_id)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-semibold text-xs shadow transition-colors"
+                            title="Open Human-In-The-Loop Physician Review"
+                          >
+                            <Stethoscope className="w-3.5 h-3.5" />
+                            <span>Review</span>
+                          </button>
+                        )}
+                        <button
+                          onClick={() => onSelectPatient(item.encounter_id)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs border border-slate-700 transition-colors"
+                        >
+                          <span>Inspect</span>
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </td>
 
                   </tr>

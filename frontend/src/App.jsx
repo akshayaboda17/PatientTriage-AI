@@ -5,11 +5,12 @@ import { NotificationToast } from './components/NotificationToast';
 import { EDQueueView } from './components/EDQueueView';
 import { AlertsDashboard } from './components/AlertsDashboard';
 import { PatientDetailView } from './components/PatientDetailView';
+import { PhysicianReviewWorkspace } from './components/PhysicianReviewWorkspace';
 import { AuditLogView } from './components/AuditLogView';
 
 const MainAppContent = () => {
   const { authHeaders } = useAuth();
-  const [activeTab, setActiveTab] = useState('queue'); // 'queue', 'alerts', 'audit', 'patient-detail'
+  const [activeTab, setActiveTab] = useState('queue'); // 'queue', 'alerts', 'audit', 'patient-detail', 'physician-review'
   const [selectedEncounterId, setSelectedEncounterId] = useState(null);
   const [unacknowledgedCount, setUnacknowledgedCount] = useState(0);
 
@@ -36,6 +37,11 @@ const MainAppContent = () => {
     setActiveTab('patient-detail');
   };
 
+  const handleReviewPatient = (encounterId) => {
+    setSelectedEncounterId(encounterId);
+    setActiveTab('physician-review');
+  };
+
   const handleAlertStateChanged = () => {
     fetchAlertCount();
   };
@@ -44,7 +50,7 @@ const MainAppContent = () => {
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-cyan-500 selection:text-white">
       {/* Top Navigation */}
       <Navbar
-        activeTab={activeTab === 'patient-detail' ? 'queue' : activeTab}
+        activeTab={['patient-detail', 'physician-review'].includes(activeTab) ? 'queue' : activeTab}
         setActiveTab={(tab) => {
           setSelectedEncounterId(null);
           setActiveTab(tab);
@@ -60,6 +66,7 @@ const MainAppContent = () => {
         {activeTab === 'queue' && (
           <EDQueueView
             onSelectPatient={handleSelectPatient}
+            onReviewPatient={handleReviewPatient}
             onAlertStateChanged={handleAlertStateChanged}
           />
         )}
@@ -75,7 +82,18 @@ const MainAppContent = () => {
           <PatientDetailView
             encounterId={selectedEncounterId}
             onBack={() => setActiveTab('queue')}
+            onOpenReview={() => setActiveTab('physician-review')}
             onAlertStateChanged={handleAlertStateChanged}
+          />
+        )}
+
+        {activeTab === 'physician-review' && selectedEncounterId && (
+          <PhysicianReviewWorkspace
+            encounterId={selectedEncounterId}
+            onBack={() => setActiveTab('queue')}
+            onDecisionSaved={() => {
+              fetchAlertCount();
+            }}
           />
         )}
 

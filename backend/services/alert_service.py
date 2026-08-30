@@ -5,9 +5,11 @@ from fastapi import HTTPException, status
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
 
+from services.audit_service import AuditService
 from models import (
     ClinicalAlert, AlertStatusEnum, AlertSeverityEnum, 
-    DetectionSourceEnum, AuditLog, Staff, EDEncounter, Patient
+    DetectionSourceEnum, AuditLog, Staff, EDEncounter, Patient,
+    ActorTypeEnum, AuditResultEnum
 )
 from services.rbac import verify_hospital_access
 
@@ -65,17 +67,21 @@ class AlertService:
                 active_alert.updated_at = datetime.datetime.utcnow()
                 
                 # Log audit event for escalation
-                audit = AuditLog(
+                AuditService.log_event(
+                    db=db,
                     hospital_id=hospital_id,
-                    staff_id="SYSTEM_DETECTOR",
-                    staff_name="Deterioration Engine",
-                    role="AI_ENGINE",
                     action="ALERT_ESCALATED",
                     entity_type="ClinicalAlert",
                     entity_id=active_alert.alert_id,
-                    metadata_json={"previous_severity": active_alert.severity.value, "new_severity": "CRITICAL", "rule_id": rule_id}
+                    actor_id="SYSTEM_DETECTOR",
+                    actor_name="Deterioration Engine",
+                    actor_role="SYSTEM",
+                    actor_type=ActorTypeEnum.SYSTEM,
+                    patient_id=patient_id,
+                    encounter_id=encounter_id,
+                    result=AuditResultEnum.SUCCESS,
+                    metadata={"previous_severity": active_alert.severity.value, "new_severity": "CRITICAL", "rule_id": rule_id}
                 )
-                db.add(audit)
                 db.commit()
                 db.refresh(active_alert)
                 return active_alert, False, "Existing alert escalated to CRITICAL"
@@ -100,22 +106,26 @@ class AlertService:
         db.flush()
 
         # Audit Alert Creation
-        audit = AuditLog(
+        AuditService.log_event(
+            db=db,
             hospital_id=hospital_id,
-            staff_id="SYSTEM_DETECTOR",
-            staff_name="Deterioration Engine",
-            role="AI_ENGINE",
             action="ALERT_CREATED",
             entity_type="ClinicalAlert",
             entity_id=new_alert.alert_id,
-            metadata_json={
+            actor_id="SYSTEM_DETECTOR",
+            actor_name="Deterioration Engine",
+            actor_role="SYSTEM",
+            actor_type=ActorTypeEnum.SYSTEM,
+            patient_id=patient_id,
+            encounter_id=encounter_id,
+            result=AuditResultEnum.SUCCESS,
+            metadata={
                 "encounter_id": encounter_id,
                 "severity": severity.value if hasattr(severity, 'value') else str(severity),
                 "rule_id": rule_id,
                 "version": rule_version
             }
         )
-        db.add(audit)
         db.commit()
         db.refresh(new_alert)
         return new_alert, True, "New clinical alert generated"
@@ -143,17 +153,21 @@ class AlertService:
         alert.updated_at = datetime.datetime.utcnow()
 
         # Audit Acknowledgment
-        audit = AuditLog(
+        AuditService.log_event(
+            db=db,
             hospital_id=staff.hospital_id,
-            staff_id=staff.staff_id,
-            staff_name=staff.name,
-            role=staff.role.value,
             action="ALERT_ACKNOWLEDGED",
             entity_type="ClinicalAlert",
             entity_id=alert.alert_id,
-            metadata_json={"encounter_id": alert.encounter_id, "previous_status": "UNACKNOWLEDGED"}
+            actor_id=staff.staff_id,
+            actor_name=staff.name,
+            actor_role=staff.role.value,
+            actor_type=ActorTypeEnum.HUMAN,
+            patient_id=alert.patient_id,
+            encounter_id=alert.encounter_id,
+            result=AuditResultEnum.SUCCESS,
+            metadata={"encounter_id": alert.encounter_id, "previous_status": "UNACKNOWLEDGED"}
         )
-        db.add(audit)
         db.commit()
         db.refresh(alert)
         return alert
@@ -189,21 +203,25 @@ class AlertService:
         alert.updated_at = datetime.datetime.utcnow()
 
         # Audit Resolution
-        audit = AuditLog(
+        AuditService.log_event(
+            db=db,
             hospital_id=staff.hospital_id,
-            staff_id=staff.staff_id,
-            staff_name=staff.name,
-            role=staff.role.value,
             action="ALERT_RESOLVED",
             entity_type="ClinicalAlert",
             entity_id=alert.alert_id,
-            metadata_json={
+            actor_id=staff.staff_id,
+            actor_name=staff.name,
+            actor_role=staff.role.value,
+            actor_type=ActorTypeEnum.HUMAN,
+            patient_id=alert.patient_id,
+            encounter_id=alert.encounter_id,
+            result=AuditResultEnum.SUCCESS,
+            metadata={
                 "encounter_id": alert.encounter_id, 
                 "previous_status": previous_status,
                 "reason": resolution_reason.strip()
             }
         )
-        db.add(audit)
         db.commit()
         db.refresh(alert)
         return alert
@@ -239,21 +257,25 @@ class AlertService:
         alert.updated_at = datetime.datetime.utcnow()
 
         # Audit Dismissal
-        audit = AuditLog(
+        AuditService.log_event(
+            db=db,
             hospital_id=staff.hospital_id,
-            staff_id=staff.staff_id,
-            staff_name=staff.name,
-            role=staff.role.value,
             action="ALERT_DISMISSED",
             entity_type="ClinicalAlert",
             entity_id=alert.alert_id,
-            metadata_json={
+            actor_id=staff.staff_id,
+            actor_name=staff.name,
+            actor_role=staff.role.value,
+            actor_type=ActorTypeEnum.HUMAN,
+            patient_id=alert.patient_id,
+            encounter_id=alert.encounter_id,
+            result=AuditResultEnum.SUCCESS,
+            metadata={
                 "encounter_id": alert.encounter_id, 
                 "previous_status": previous_status,
                 "reason": dismissal_reason.strip()
             }
         )
-        db.add(audit)
         db.commit()
         db.refresh(alert)
         return alert

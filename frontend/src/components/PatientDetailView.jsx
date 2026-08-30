@@ -6,7 +6,7 @@ import {
   TrendingUp, TrendingDown, UserCheck, Stethoscope, ChevronDown, ChevronUp
 } from 'lucide-react';
 
-export const PatientDetailView = ({ encounterId, onBack, onAlertStateChanged }) => {
+export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertStateChanged }) => {
   const { authHeaders, hasPermission, addToast, currentStaff } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -178,7 +178,7 @@ export const PatientDetailView = ({ encounterId, onBack, onAlertStateChanged }) 
     <div className="space-y-6">
       
       {/* Top Back Nav & Quick Actions */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <button
           onClick={onBack}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
@@ -187,13 +187,25 @@ export const PatientDetailView = ({ encounterId, onBack, onAlertStateChanged }) 
           <span>Back to ED Queue</span>
         </button>
 
-        <button
-          onClick={() => setShowVitalsForm(!showVitalsForm)}
-          className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow-md shadow-cyan-900/30 transition-colors"
-        >
-          <PlusCircle className="w-4 h-4" />
-          <span>{showVitalsForm ? 'Close Form' : 'Record New Vital Signs'}</span>
-        </button>
+        <div className="flex items-center gap-2">
+          {onOpenReview && (
+            <button
+              onClick={onOpenReview}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-900/30 transition-colors"
+            >
+              <Stethoscope className="w-4 h-4" />
+              <span>Physician Review Workspace</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => setShowVitalsForm(!showVitalsForm)}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow-md shadow-cyan-900/30 transition-colors"
+          >
+            <PlusCircle className="w-4 h-4" />
+            <span>{showVitalsForm ? 'Close Form' : 'Record New Vital Signs'}</span>
+          </button>
+        </div>
       </div>
 
       {/* Patient Demographic Banner */}
@@ -626,6 +638,16 @@ export const PatientDetailView = ({ encounterId, onBack, onAlertStateChanged }) 
                   </div>
                 </div>
               </div>
+
+              {onOpenReview && (
+                <button
+                  onClick={onOpenReview}
+                  className="w-full py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow transition-colors flex items-center justify-center gap-1.5 mt-2"
+                >
+                  <Stethoscope className="w-3.5 h-3.5" />
+                  <span>Review & Make Clinical Decision (Task 10)</span>
+                </button>
+              )}
             </div>
           )}
 

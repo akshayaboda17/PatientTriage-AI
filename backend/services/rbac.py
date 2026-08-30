@@ -11,7 +11,7 @@ ROLE_PERMISSIONS: dict[StaffRoleEnum, Set[str]] = {
     StaffRoleEnum.HOSPITAL_ADMIN: {
         "hospital:view", "hospital:update",
         "staff:view", "staff:create", "staff:update", "staff:deactivate",
-        "audit:view", "patient:view"
+        "audit:view", "patient:view", "clinical_decision:view"
     },
     StaffRoleEnum.CLINICAL_DIRECTOR: {
         "hospital:view", "staff:view", "audit:view",
@@ -19,7 +19,8 @@ ROLE_PERMISSIONS: dict[StaffRoleEnum, Set[str]] = {
         "triage:view", "triage:create", "triage:update",
         "vitals:view", "vitals:create", "vitals:update",
         "ai:view", "ai:override",
-        "alert:view", "alert:acknowledge", "alert:resolve", "alert:dismiss"
+        "alert:view", "alert:acknowledge", "alert:resolve", "alert:dismiss",
+        "clinical_decision:create", "clinical_decision:view", "clinical_assessment:create", "clinical_assessment:update"
     },
     StaffRoleEnum.EMERGENCY_PHYSICIAN: {
         "patient:view", "patient:create", "patient:update",
@@ -27,27 +28,31 @@ ROLE_PERMISSIONS: dict[StaffRoleEnum, Set[str]] = {
         "vitals:view", "vitals:create", "vitals:update",
         "ai:view", "ai:override",
         "alert:view", "alert:acknowledge", "alert:resolve", "alert:dismiss",
-        "audit:view"
+        "audit:view",
+        "clinical_decision:create", "clinical_decision:view", "clinical_assessment:create", "clinical_assessment:update"
     },
     StaffRoleEnum.TRIAGE_NURSE: {
         "patient:view", "patient:create", "patient:update",
         "triage:view", "triage:create", "triage:update",
         "vitals:view", "vitals:create", "vitals:update",
         "ai:view",
-        "alert:view", "alert:acknowledge", "alert:resolve"
+        "alert:view", "alert:acknowledge", "alert:resolve",
+        "clinical_decision:view"
     },
     StaffRoleEnum.STAFF_NURSE: {
         "patient:view", "patient:update",
         "triage:view",
         "vitals:view", "vitals:create", "vitals:update",
         "ai:view",
-        "alert:view", "alert:acknowledge"
+        "alert:view", "alert:acknowledge",
+        "clinical_decision:view"
     },
     StaffRoleEnum.EMERGENCY_TECHNICIAN: {
         "patient:view",
         "vitals:view", "vitals:create",
         "triage:view",
-        "alert:view"
+        "alert:view",
+        "clinical_decision:view"
     }
 }
 

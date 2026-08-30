@@ -65,6 +65,41 @@ class OverrideReasonEnum(str, enum.Enum):
     UNVERIFIED_EHR_CORRECTION = "EHR / History Discrepancy"
     OTHER = "Other (Mandatory Detailed Note)"
 
+class AIAgreementEnum(str, enum.Enum):
+    AGREED = "AGREED"
+    OVERRIDDEN = "OVERRIDDEN"
+
+class ClinicalDecisionEnum(str, enum.Enum):
+    CONTINUE_EVALUATION = "CONTINUE_EVALUATION"
+    ESCALATE_CARE = "ESCALATE_CARE"
+    ADMIT_INPATIENT = "ADMIT_INPATIENT"
+    DISCHARGE_HOME = "DISCHARGE_HOME"
+    TRANSFER_FACILITY = "TRANSFER_FACILITY"
+    OBSERVATION_UNIT = "OBSERVATION_UNIT"
+    OTHER = "OTHER"
+
+class OverrideReasonCategoryEnum(str, enum.Enum):
+    CLINICAL_CONTEXT_NOT_IN_MODEL = "Clinical context not represented in model input"
+    PHYSICAL_EXAM_FINDINGS = "Physical examination findings"
+    RECENT_INTERVENTION = "Recent clinical treatment / intervention response"
+    DIAGNOSTIC_RESULTS = "Point-of-care diagnostics / lab discrepancy"
+    CLINICAL_INTUITION_GESTALT = "Clinical intuition & Gestalt assessment"
+    OTHER = "Other (Mandatory Detailed Clinical Note)"
+
+# ==========================================
+# Task 11: Audit Trail Enums
+# ==========================================
+
+class ActorTypeEnum(str, enum.Enum):
+    HUMAN = "HUMAN"
+    SYSTEM = "SYSTEM"
+    AI_SYSTEM = "AI_SYSTEM"
+
+class AuditResultEnum(str, enum.Enum):
+    SUCCESS = "SUCCESS"
+    FAILURE = "FAILURE"
+    DENIED = "DENIED"
+
 # ==========================================
 # Core Hospital & Staff (Tenant & RBAC)
 # ==========================================
@@ -83,6 +118,7 @@ class Hospital(Base):
     patients = relationship("Patient", back_populates="hospital", cascade="all, delete-orphan")
     encounters = relationship("EDEncounter", back_populates="hospital", cascade="all, delete-orphan")
     alerts = relationship("ClinicalAlert", back_populates="hospital", cascade="all, delete-orphan")
+    physician_assessments = relationship("PhysicianAssessment", back_populates="hospital", cascade="all, delete-orphan")
 
     def to_dict(self):
         return {
@@ -136,6 +172,9 @@ class Patient(Base):
     last_name = Column(String(100), nullable=False)
     age = Column(Float, nullable=False)
     gender = Column(String(20), nullable=False)
+    phone = Column(String(50), nullable=True)
+    allergies = Column(Text, nullable=True)
+    medical_history = Column(Text, nullable=True)
     arrival_mode = Column(String(50), nullable=True) # Walk-in, Ambulance, Helicopter
     created_by = Column(String(50), nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
@@ -169,6 +208,9 @@ class Patient(Base):
             "full_name": f"{self.first_name} {self.last_name}",
             "age": self.age,
             "gender": self.gender,
+            "phone": self.phone,
+            "allergies": self.allergies,
+            "medical_history": self.medical_history,
             "arrival_mode": self.arrival_mode,
             "created_at": self.created_at.isoformat() if self.created_at else None
         }
@@ -199,6 +241,7 @@ class EDEncounter(Base):
     triage_assessments = relationship("TriageAssessment", back_populates="encounter", cascade="all, delete-orphan")
     ai_risk_assessments = relationship("AIRiskAssessment", back_populates="encounter", cascade="all, delete-orphan")
     alerts = relationship("ClinicalAlert", back_populates="encounter", cascade="all, delete-orphan")
+    physician_assessments = relationship("PhysicianAssessment", back_populates="encounter", cascade="all, delete-orphan", order_by="PhysicianAssessment.created_at.desc()")
 
     def to_dict(self):
         return {
@@ -277,6 +320,13 @@ class ClinicalObservation(Base):
     notes = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
 
+    # Observation Correction Traceability (Task 11)
+    is_corrected = Column(Boolean, default=False, nullable=False)
+    correction_reason = Column(String(255), nullable=True)
+    corrected_by = Column(String(50), nullable=True)
+    corrected_at = Column(DateTime, nullable=True)
+    original_values_json = Column(JSON, nullable=True)
+
     encounter = relationship("EDEncounter", back_populates="observations")
 
     # Composite index for fast longitudinal trend queries
@@ -300,7 +350,12 @@ class ClinicalObservation(Base):
             "gcs": self.gcs,
             "pain_score": self.pain_score,
             "recorded_by": self.recorded_by,
-            "notes": self.notes
+            "notes": self.notes,
+            "is_corrected": self.is_corrected,
+            "correction_reason": self.correction_reason,
+            "corrected_by": self.corrected_by,
+            "corrected_at": self.corrected_at.isoformat() if self.corrected_at else None,
+            "original_values": self.original_values_json
         }
 
 # ==========================================
@@ -311,6 +366,7 @@ class AIRiskAssessment(Base):
     __tablename__ = 'ai_risk_assessments'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    assessment_id = Column(String(100), unique=True, nullable=True, index=True) # e.g. AI-ENC-100-01
     hospital_id = Column(String(50), nullable=False, index=True)
     patient_id = Column(String(50), nullable=False, index=True)
     encounter_id = Column(String(50), ForeignKey('ed_encounters.encounter_id'), nullable=False, index=True)
@@ -322,7 +378,8 @@ class AIRiskAssessment(Base):
     confidence_score = Column(Float, nullable=False)
     shock_index = Column(Float, nullable=True)
     qsofa = Column(Integer, nullable=True)
-    model_version = Column(String(50), default="RandomForest-v1.2", nullable=False)
+    model_name = Column(String(100), default="PatientTriage Risk Model", nullable=True)
+    model_version = Column(String(50), default="1.0.0", nullable=False)
     assessed_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
 
     encounter = relationship("EDEncounter", back_populates="ai_risk_assessments")
@@ -331,6 +388,7 @@ class AIRiskAssessment(Base):
     def to_dict(self):
         return {
             "id": self.id,
+            "assessment_id": self.assessment_id,
             "hospital_id": self.hospital_id,
             "patient_id": self.patient_id,
             "encounter_id": self.encounter_id,
@@ -340,6 +398,7 @@ class AIRiskAssessment(Base):
             "confidence_score": self.confidence_score,
             "shock_index": self.shock_index,
             "qsofa": self.qsofa,
+            "model_name": self.model_name,
             "model_version": self.model_version,
             "assessed_at": self.assessed_at.isoformat() if self.assessed_at else None
         }
@@ -466,6 +525,72 @@ class ClinicalAlert(Base):
         }
 
 # ==========================================
+# Task 10: Physician Review & Clinical Decision (Human-in-the-Loop)
+# ==========================================
+
+class PhysicianAssessment(Base):
+    __tablename__ = 'physician_assessments'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    assessment_id = Column(String(100), unique=True, nullable=False, index=True) # e.g. PA-ENC-DEMO-001-xxxx
+    hospital_id = Column(String(50), ForeignKey('hospitals.hospital_code'), nullable=False, index=True)
+    encounter_id = Column(String(50), ForeignKey('ed_encounters.encounter_id'), nullable=False, index=True)
+    patient_id = Column(String(50), ForeignKey('patients.patient_id'), nullable=False, index=True)
+    
+    physician_id = Column(String(50), ForeignKey('staff.staff_id'), nullable=False, index=True)
+    physician_name = Column(String(150), nullable=False)
+    physician_role = Column(String(50), nullable=False)
+    
+    # Reference to original AI assessment at time of review (preserved immutably)
+    ai_assessment_id = Column(String(100), nullable=True)
+    ai_risk_category_at_review = Column(String(50), nullable=True)
+    ai_risk_score_at_review = Column(Float, nullable=True)
+    
+    # Physician evaluation
+    clinical_assessment = Column(Text, nullable=True) # Clinician interpretation
+    ai_agreement = Column(Enum(AIAgreementEnum), default=AIAgreementEnum.AGREED, nullable=False)
+    clinician_assigned_risk = Column(String(50), nullable=True) # e.g. LOW, MODERATE, HIGH, CRITICAL
+    override_reason = Column(String(255), nullable=True) # Mandatory when OVERRIDDEN
+    clinical_notes = Column(Text, nullable=True)
+    
+    # Structured clinical decision (what happens next)
+    clinical_decision = Column(Enum(ClinicalDecisionEnum), default=ClinicalDecisionEnum.CONTINUE_EVALUATION, nullable=False)
+    
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False, index=True)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    __table_args__ = (
+        Index('idx_phys_assess_hosp_enc', 'hospital_id', 'encounter_id'),
+        Index('idx_phys_assess_enc_time', 'encounter_id', 'created_at'),
+    )
+
+    hospital = relationship("Hospital", back_populates="physician_assessments")
+    encounter = relationship("EDEncounter", back_populates="physician_assessments")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "assessment_id": self.assessment_id,
+            "hospital_id": self.hospital_id,
+            "encounter_id": self.encounter_id,
+            "patient_id": self.patient_id,
+            "physician_id": self.physician_id,
+            "physician_name": self.physician_name,
+            "physician_role": self.physician_role,
+            "ai_assessment_id": self.ai_assessment_id,
+            "ai_risk_category_at_review": self.ai_risk_category_at_review,
+            "ai_risk_score_at_review": self.ai_risk_score_at_review,
+            "clinical_assessment": self.clinical_assessment,
+            "ai_agreement": self.ai_agreement.value if hasattr(self.ai_agreement, 'value') else self.ai_agreement,
+            "clinician_assigned_risk": self.clinician_assigned_risk,
+            "override_reason": self.override_reason,
+            "clinical_notes": self.clinical_notes,
+            "clinical_decision": self.clinical_decision.value if hasattr(self.clinical_decision, 'value') else self.clinical_decision,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
+
+# ==========================================
 # Audit Trail (Tamper-Resistant Log)
 # ==========================================
 
@@ -473,32 +598,59 @@ class AuditLog(Base):
     __tablename__ = 'audit_logs'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
+    event_id = Column(String(100), unique=True, nullable=False, index=True) # e.g. AUD-2026-000001
     hospital_id = Column(String(50), nullable=False, index=True)
-    staff_id = Column(String(50), nullable=False, index=True)
-    staff_name = Column(String(150), nullable=True)
-    role = Column(String(50), nullable=False)
-    action = Column(String(100), nullable=False, index=True) # e.g. ALERT_CREATED, ALERT_ACKNOWLEDGED, ALERT_RESOLVED
-    entity_type = Column(String(50), nullable=False) # e.g. ClinicalAlert, EDEncounter
-    entity_id = Column(String(100), nullable=False, index=True) # e.g. ALERT-8921
+    
+    # Actor details
+    staff_id = Column(String(50), nullable=False, index=True) # actor_id
+    staff_name = Column(String(150), nullable=True)           # actor_name
+    role = Column(String(50), nullable=False, index=True)      # actor_role
+    actor_type = Column(Enum(ActorTypeEnum), default=ActorTypeEnum.HUMAN, nullable=False, index=True)
+
+    # Action & Target Entity
+    action = Column(String(100), nullable=False, index=True) # e.g. PATIENT_CREATED, AI_OVERRIDE_RECORDED
+    entity_type = Column(String(50), nullable=False, index=True) # e.g. PATIENT, ENCOUNTER, AI_ASSESSMENT
+    entity_id = Column(String(100), nullable=False, index=True)
+    
+    # Clinical Context References
+    patient_id = Column(String(50), nullable=True, index=True)
+    encounter_id = Column(String(50), nullable=True, index=True)
+
+    # Event Result & Timestamp
+    result = Column(Enum(AuditResultEnum), default=AuditResultEnum.SUCCESS, nullable=False, index=True)
     timestamp = Column(DateTime, default=datetime.datetime.utcnow, nullable=False, index=True)
+    
+    # Safe structured metadata (no raw PHI, no passwords, no tokens)
     metadata_json = Column(JSON, nullable=True)
 
     __table_args__ = (
         Index('idx_audit_hosp_time', 'hospital_id', 'timestamp'),
+        Index('idx_audit_hosp_action', 'hospital_id', 'action'),
+        Index('idx_audit_hosp_enc', 'hospital_id', 'encounter_id'),
+        Index('idx_audit_hosp_actor', 'hospital_id', 'staff_id'),
     )
 
     def to_dict(self):
         return {
             "id": self.id,
+            "event_id": self.event_id,
             "hospital_id": self.hospital_id,
-            "staff_id": self.staff_id,
-            "staff_name": self.staff_name,
-            "role": self.role,
+            "actor_id": self.staff_id,
+            "actor_name": self.staff_name or self.staff_id,
+            "actor_role": self.role,
+            "actor_type": self.actor_type.value if hasattr(self.actor_type, 'value') else self.actor_type,
             "action": self.action,
             "entity_type": self.entity_type,
             "entity_id": self.entity_id,
+            "patient_id": self.patient_id,
+            "encounter_id": self.encounter_id,
+            "result": self.result.value if hasattr(self.result, 'value') else self.result,
             "timestamp": self.timestamp.isoformat() if self.timestamp else None,
-            "metadata": self.metadata_json
+            "metadata": self.metadata_json,
+            # Backward compatibility aliases
+            "staff_id": self.staff_id,
+            "staff_name": self.staff_name,
+            "role": self.role
         }
 
 # Legacy TriageAuditLog model preserved for backward compatibility
