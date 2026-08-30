@@ -4,13 +4,13 @@ from typing import Dict, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
-from models import Hospital, Staff, ActorTypeEnum, AuditResultEnum
-from schemas.auth_schemas import LoginRequest
+from models import Hospital, Staff, StaffRoleEnum, ActorTypeEnum, AuditResultEnum
+from schemas.auth_schemas import LoginRequest, RegisterHospitalRequest
 from services.audit_service import AuditService
 from services.rbac import (
     get_db, get_current_staff,
     get_staff_permissions, create_session, revoke_session,
-    verify_password
+    verify_password, hash_password
 )
 
 router = APIRouter(tags=["Authentication"])
@@ -166,3 +166,89 @@ def get_current_user_profile(staff: Staff = Depends(get_current_staff), db: Sess
 def list_hospitals(db: Session = Depends(get_db)):
     hospitals = db.query(Hospital).filter(Hospital.is_active == True).all()
     return {"hospitals": [h.to_dict() for h in hospitals]}
+
+@router.post("/api/auth/register-hospital")
+def register_new_hospital(req: RegisterHospitalRequest, db: Session = Depends(get_db)):
+    """
+    Provisions a new hospital facility/tenant and creates the initial administrative/clinical user.
+    Enables new users to start with a 100% clean, unpopulated clinical workspace.
+    """
+    # 1. Check if hospital code already exists
+    hosp_code = req.hospital_code.strip().upper()
+    existing_hosp = db.query(Hospital).filter(Hospital.hospital_code == hosp_code).first()
+    if existing_hosp:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Hospital code '{hosp_code}' already exists. Please choose a unique code."
+        )
+
+    # 2. Check if staff ID already exists
+    staff_id = req.admin_staff_id.strip()
+    existing_staff = db.query(Staff).filter(Staff.staff_id == staff_id).first()
+    if existing_staff:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Staff ID '{staff_id}' already exists. Please choose a unique staff ID."
+        )
+
+    # 3. Create Hospital
+    new_hospital = Hospital(
+        hospital_code=hosp_code,
+        name=req.hospital_name.strip(),
+        address=req.address.strip() if req.address else None,
+        is_active=True
+    )
+    db.add(new_hospital)
+    db.commit()
+    db.refresh(new_hospital)
+
+    # 4. Resolve initial role
+    assigned_role = StaffRoleEnum.CLINICAL_DIRECTOR
+    if req.role and req.role.upper() in [r.value for r in StaffRoleEnum]:
+        assigned_role = StaffRoleEnum(req.role.upper())
+
+    # 5. Create Staff Account
+    from services.rbac import hash_password
+    pw_hash = hash_password(req.password)
+
+    new_staff = Staff(
+        hospital_id=hosp_code,
+        staff_id=staff_id,
+        name=req.admin_name.strip(),
+        email=req.admin_email.strip(),
+        role=assigned_role,
+        password_hash=pw_hash,
+        is_active=True
+    )
+    db.add(new_staff)
+    db.commit()
+    db.refresh(new_staff)
+
+    # 6. Audit Event
+    AuditService.log_event(
+        db=db,
+        hospital_id=hosp_code,
+        action="HOSPITAL_ONBOARDED",
+        entity_type="HOSPITAL",
+        entity_id=hosp_code,
+        actor_id=staff_id,
+        actor_name=new_staff.name,
+        actor_role=assigned_role.value,
+        actor_type=ActorTypeEnum.HUMAN,
+        result=AuditResultEnum.SUCCESS,
+        metadata={"hospital_name": new_hospital.name, "admin_email": new_staff.email},
+        auto_commit=True
+    )
+
+    # 7. Create Session
+    token = create_session(new_staff.staff_id, new_staff.hospital_id)
+    permissions = list(get_staff_permissions(new_staff.role))
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "staff": new_staff.to_dict(),
+        "hospital": new_hospital.to_dict(),
+        "permissions": permissions,
+        "message": f"Hospital '{new_hospital.name}' registered successfully with clean workspace."
+    }

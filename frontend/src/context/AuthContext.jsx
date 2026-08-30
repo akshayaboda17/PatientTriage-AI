@@ -91,6 +91,47 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const registerHospital = async (payload) => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/register-hospital', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Hospital registration failed.');
+      }
+
+      const data = await res.json();
+      const accessToken = data.access_token;
+      const staffUser = data.staff;
+      const staffHospital = data.hospital;
+      const userPermissions = data.permissions || [];
+
+      setToken(accessToken);
+      setUser(staffUser);
+      setHospital(staffHospital);
+      setPermissions(userPermissions);
+
+      localStorage.setItem('pt_access_token', accessToken);
+      localStorage.setItem('pt_user', JSON.stringify(staffUser));
+      localStorage.setItem('pt_hospital', JSON.stringify(staffHospital));
+      localStorage.setItem('pt_permissions', JSON.stringify(userPermissions));
+
+      fetchHospitals();
+      addToast(`Hospital "${staffHospital?.name}" registered successfully with a clean workspace! Welcome, ${staffUser.name}!`, 'success');
+      return { success: true };
+    } catch (err) {
+      addToast(err.message, 'error');
+      return { success: false, error: err.message };
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const logout = async () => {
     try {
       if (token) {
@@ -165,6 +206,7 @@ export const AuthProvider = ({ children }) => {
         isAuthenticated,
         loading,
         login,
+        registerHospital,
         logout,
         hasPermission,
         toasts,
