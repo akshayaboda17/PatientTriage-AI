@@ -241,7 +241,33 @@ class TriageAssessment(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
     amended_by = Column(String(50), ForeignKey('staffs.staff_id'), nullable=True)
-    amended_at = Column(DateTime, nullable=True)
+
+class AIAssessment(Base):
+    __tablename__ = 'ai_assessments'
+
+    assessment_id = Column(Integer, primary_key=True, autoincrement=True)
+    encounter_id = Column(Integer, ForeignKey('encounters.id'), nullable=False)
+    hospital_id = Column(String(50), ForeignKey('hospitals.hospital_id'), nullable=False)
+    risk_score = Column(Float, nullable=False)
+    risk_category = Column(String(50), nullable=False)
+    model_name = Column(String(100), nullable=False)
+    model_version = Column(String(50), nullable=False)
+    input_snapshot = Column(JSON, nullable=False)
+    generated_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    generated_by = Column(String(50), ForeignKey('staffs.staff_id'), nullable=False)
+
+class AIExplanation(Base):
+    __tablename__ = 'ai_explanations'
+
+    explanation_id = Column(Integer, primary_key=True, autoincrement=True)
+    ai_assessment_id = Column(Integer, ForeignKey('ai_assessments.assessment_id'), nullable=False)
+    encounter_id = Column(Integer, ForeignKey('encounters.id'), nullable=False)
+    hospital_id = Column(String(50), ForeignKey('hospitals.hospital_id'), nullable=False)
+    explanation_method = Column(String(50), nullable=False)
+    explanation_version = Column(String(50), nullable=False)
+    generated_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    status = Column(String(50), nullable=False)
+    feature_contributions = Column(JSON, nullable=False)
 
 # Setup SQLite Database for the prototype
 engine = create_engine("sqlite:///./triage_database.db", connect_args={"check_same_thread": False})

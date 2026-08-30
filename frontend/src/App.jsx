@@ -37,6 +37,25 @@ export default function App() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
+  // Auto-dismiss toasts after 10 seconds
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => {
+        setError("");
+      }, 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
+
+  useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => {
+        setSuccess("");
+      }, 10000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
+
   // Sync route hash changes
   useEffect(() => {
     const handleHashChange = () => {
@@ -1651,6 +1670,47 @@ function ClinicalTriageWorkspace({ patient, encounter, onClose, user, setError, 
   const [aiRecommendation, setAiRecommendation] = useState(null);
   const [evaluatingAI, setEvaluatingAI] = useState(false);
 
+  // XAI States
+  const [explanation, setExplanation] = useState(null);
+  const [loadingExplanation, setLoadingExplanation] = useState(false);
+  const [explanationError, setExplanationError] = useState("");
+
+  useEffect(() => {
+    if (aiRecommendation && aiRecommendation.assessment_id) {
+      fetchExplanation(aiRecommendation.assessment_id);
+    } else {
+      setExplanation(null);
+      setExplanationError("");
+    }
+  }, [aiRecommendation]);
+
+  const fetchExplanation = async (assessmentId) => {
+    setLoadingExplanation(true);
+    setExplanationError("");
+    setExplanation(null);
+    try {
+      const genRes = await fetch(`/api/v1/assessments/${assessmentId}/explanation`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${localStorage.getItem("token")}`
+        }
+      });
+      if (genRes.ok) {
+        const expData = await genRes.json();
+        setExplanation(expData);
+      } else {
+        const errData = await genRes.json();
+        setExplanationError(errData.detail || "Unable to generate AI explanation. Please try again.");
+        setError(errData.detail || "Unable to generate AI explanation. Please try again.");
+      }
+    } catch (err) {
+      setExplanationError("Unable to generate AI explanation. Please try again.");
+      setError("Unable to generate AI explanation. Please try again.");
+    } finally {
+      setLoadingExplanation(false);
+    }
+  };
+
   const fetchTriageData = async () => {
     try {
       const tRes = await fetch(`/api/v1/encounters/${encounter.encounter_id}/triage`, {
@@ -1862,9 +1922,10 @@ function ClinicalTriageWorkspace({ patient, encounter, onClose, user, setError, 
           sbp: latest.systolic_bp || 120,
           rr: latest.respiratory_rate || 16,
           spo2: latest.spo2 || 98,
-          gcs: 15,
+          gcs: latest.gcs || 15,
           history_available: medicalHistory !== "",
-          setting: "Urban"
+          setting: "Urban",
+          encounter_id: encounter.encounter_id
         })
       });
       if (res.ok) {
@@ -2305,30 +2366,120 @@ function ClinicalTriageWorkspace({ patient, encounter, onClose, user, setError, 
 
       {/* AI Recommendation Preview modal */}
       {aiRecommendation && (
-        <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-50 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-lg w-full text-slate-100 shadow-2xl p-6 space-y-4 text-left">
-            <h3 className="text-sm font-bold text-white uppercase tracking-wider border-b border-slate-800 pb-2">AI Triage Assessment Preview</h3>
-            <p className="text-xs text-slate-400">This displays the ML Random Forest assessment calculated based on the latest recorded vital signs. This is non-binding decision support.</p>
-            <div className="p-4 bg-slate-950 border border-slate-850 rounded-lg space-y-3 font-mono text-xs">
-              <div>Suggested ESI: <strong className="text-cyan-400 text-lg block mt-1">Level {aiRecommendation.ai_suggested_level}</strong></div>
-              <div>Confidence: <strong className="text-white block mt-0.5">{(aiRecommendation.confidence_score * 100).toFixed(1)}%</strong></div>
-              <div>Top Drivers:
-                <ul className="list-disc pl-4 mt-1 text-[11px] text-slate-400 space-y-0.5">
-                  {aiRecommendation.clinical_drivers?.slice(0, 3).map((d, idx) => (
-                    <li key={idx}>{d}</li>
-                  ))}
-                </ul>
+        <div className="fixed inset-0 bg-black/85 flex items-center justify-center p-4 z-50 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl max-w-xl w-full text-slate-100 shadow-2xl p-6 space-y-4 text-left my-8">
+            <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+              <h3 className="text-sm font-bold text-white uppercase tracking-wider">AI Triage Assessment & Local Explainability</h3>
+              <button onClick={() => setAiRecommendation(null)} className="text-slate-400 hover:text-white font-bold">&times;</button>
+            </div>
+            
+            <p className="text-[11px] text-slate-400">
+              This displays the Random Forest assessment calculated based on the snapshot of clinical features submitted. This is non-binding decision support.
+            </p>
+            
+            <div className="grid grid-cols-3 gap-3 p-4 bg-slate-950 border border-slate-850 rounded-lg font-mono text-xs">
+              <div className="text-left">
+                <span className="text-[9px] text-slate-500 block uppercase">Suggested ESI</span>
+                <strong className="text-cyan-400 text-lg block mt-0.5">Level {aiRecommendation.ai_suggested_level}</strong>
+              </div>
+              <div className="text-left border-l border-slate-850 pl-3">
+                <span className="text-[9px] text-slate-500 block uppercase">Confidence</span>
+                <strong className="text-white text-lg block mt-0.5">{(aiRecommendation.confidence_score * 100).toFixed(1)}%</strong>
+              </div>
+              <div className="text-left border-l border-slate-850 pl-3">
+                <span className="text-[9px] text-slate-500 block uppercase">Decision Rule</span>
+                <strong className="text-slate-300 text-[10px] block mt-1.5 leading-none">
+                  {aiRecommendation.auto_escalated ? "Auto-Escalated (Low Confidence)" : "Model Decided"}
+                </strong>
               </div>
             </div>
+
+            {/* XAI Explanation Panel */}
+            <div className="border-t border-slate-850 pt-3 space-y-3">
+              <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider font-mono">💡 Why this prediction?</h4>
+              
+              {loadingExplanation && (
+                <div className="flex flex-col justify-center items-center py-8 space-y-2">
+                  <div className="w-5 h-5 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
+                  <span className="text-[10px] font-mono text-slate-500">Generating AI explainability features...</span>
+                </div>
+              )}
+
+              {explanationError && (
+                <div className="p-3 bg-red-950/25 border border-red-900/40 rounded-lg text-red-400 text-[11px] font-mono space-y-1">
+                  <p className="font-bold">AI explanation currently unavailable.</p>
+                  <p className="text-[9px] text-slate-500">The AI risk assessment remains available. You can click retry to attempt recalculation.</p>
+                  <button 
+                    type="button" 
+                    onClick={() => fetchExplanation(aiRecommendation.assessment_id)} 
+                    className="mt-1.5 px-2.5 py-1 bg-red-900/40 hover:bg-red-800/40 border border-red-850 rounded text-[9px] text-white font-bold"
+                  >
+                    Retry Explanation
+                  </button>
+                </div>
+              )}
+
+              {explanation && explanation.feature_contributions && (
+                <div className="space-y-3">
+                  <p className="text-[9px] text-slate-500 font-mono italic">
+                    * Model contributions describe model behavior and do not establish clinical causation or replace clinician judgment.
+                  </p>
+
+                  <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1">
+                    {(() => {
+                      const maxVal = Math.max(...explanation.feature_contributions.map(f => Math.abs(f.contribution_value))) || 1.0;
+                      return explanation.feature_contributions.slice(0, 5).map((f) => {
+                        const pct = Math.min(100, Math.round((Math.abs(f.contribution_value) / maxVal) * 100));
+                        const isPositive = f.direction === "higher_risk";
+                        return (
+                          <div key={f.rank} className="p-2 bg-slate-950 border border-slate-850 rounded text-[11px] font-mono space-y-1">
+                            <div className="flex justify-between items-center">
+                              <span className="text-white font-semibold">{f.feature_name}</span>
+                              <span className="text-slate-400">
+                                Value: <strong>{f.feature_value} {f.feature_unit}</strong>
+                              </span>
+                            </div>
+                            
+                            <div className="flex justify-between items-center text-[10px] text-slate-500">
+                              <span className={isPositive ? "text-amber-500" : "text-emerald-500"}>
+                                {isPositive ? "↑ Influence toward higher risk" : "↓ Influence toward lower risk"}
+                              </span>
+                              <span>Weight: {f.contribution_value > 0 ? "+" : ""}{f.contribution_value.toFixed(4)}</span>
+                            </div>
+
+                            {/* Relative length contribution bar */}
+                            <div className="w-full bg-slate-900 h-1.5 rounded overflow-hidden">
+                              <div 
+                                style={{ width: `${pct}%` }} 
+                                className={`h-full rounded ${isPositive ? "bg-amber-600" : "bg-emerald-600"}`}
+                              />
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+                  
+                  <div className="p-2 bg-slate-950 border border-slate-850 rounded flex justify-between items-center text-[9px] text-slate-500 font-mono">
+                    <span>Model: {explanation.explanation_method} v{explanation.explanation_version}</span>
+                    <span>Provenance ID: AI-{explanation.ai_assessment_id}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <div className="flex justify-end pt-2 border-t border-slate-800">
-              <button type="button" onClick={() => setAiRecommendation(null)} className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs">Close Preview</button>
+              <button 
+                type="button" 
+                onClick={() => setAiRecommendation(null)} 
+                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded text-xs font-bold transition"
+              >
+                Close Preview
+              </button>
             </div>
           </div>
         </div>
-      )}
-    </div>
-  );
-}function TriageNurseDashboard({ user, setError, setSuccess }) {
+      )}function TriageNurseDashboard({ user, setError, setSuccess }) {
   const [patients, setPatients] = useState([]);
   const [activeTab, setActiveTab] = useState("queue"); // queue, register, triage_workspace
   const [loading, setLoading] = useState(false);

@@ -15,8 +15,10 @@ import secrets
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__))))
 from models import (
     SessionLocal, Hospital, Staff, Role, Permission, Patient, TriageRecord, TriageAuditLog, AuditLog,
-    OverrideReasonEnum, ActionTypeEnum, seed_database, get_hash, Encounter, VitalSigns, TriageAssessment
+    OverrideReasonEnum, ActionTypeEnum, seed_database, get_hash, Encounter, VitalSigns, TriageAssessment,
+    AIAssessment, AIExplanation
 )
+from explainability_service import ExplainabilityService
 
 from models import Patient, SessionLocal
 from schemas import PatientCreate, PatientResponse
@@ -788,6 +790,44 @@ class TriageEvaluateInput(BaseModel):
     setting: str = "Urban"
     facility_tier: int = 2
     transit_time_mins: int = 30
+    encounter_id: Optional[str] = None
+
+class FeatureContributionSchema(BaseModel):
+    feature_name: str
+    raw_feature_key: str
+    feature_value: float
+    feature_unit: str
+    contribution_value: float
+    direction: str
+    rank: int
+
+class AIAssessmentResponse(BaseModel):
+    assessment_id: int
+    encounter_id: int
+    hospital_id: str
+    risk_score: float
+    risk_category: str
+    model_name: str
+    model_version: str
+    generated_at: datetime.datetime
+    generated_by: str
+
+    class Config:
+        from_attributes = True
+
+class AIExplanationResponse(BaseModel):
+    explanation_id: int
+    ai_assessment_id: int
+    encounter_id: int
+    hospital_id: str
+    explanation_method: str
+    explanation_version: str
+    generated_at: datetime.datetime
+    status: str
+    feature_contributions: List[FeatureContributionSchema]
+
+    class Config:
+        from_attributes = True
 
 class TriageAcceptInput(BaseModel):
     patient_id: str
@@ -1335,7 +1375,7 @@ def update_triage_assessment(encounter_id: str, data: TriageAssessmentPatchInput
     return triage
 
 @app.post("/api/v1/triage")
-def triage_evaluate(patient: TriageEvaluateInput, current_user: dict = Depends(PermissionChecker(Permissions.TRIAGE_CREATE))):
+def triage_evaluate(patient: TriageEvaluateInput, db: Session = Depends(get_db), current_user: dict = Depends(PermissionChecker(Permissions.TRIAGE_CREATE))):
     # Clean clinical data send to AI - pseudonymize names/emails
     patient_data = patient.dict()
     triage_result = engine.evaluate_patient(patient_data)
@@ -1351,12 +1391,83 @@ def triage_evaluate(patient: TriageEvaluateInput, current_user: dict = Depends(P
     if not formatted_drivers:
         formatted_drivers.append({"feature": "Vitals within standard deviations", "weight": 5})
 
+    assessment_id = None
+    if patient.encounter_id:
+        encounter = db.query(Encounter).filter(
+            Encounter.encounter_id == patient.encounter_id,
+            Encounter.hospital_id == current_user["hospital_id"]
+        ).first()
+        if not encounter:
+            raise HTTPException(status_code=404, detail="Encounter not found.")
+
+        new_assessment = AIAssessment(
+            encounter_id=encounter.id,
+            hospital_id=current_user["hospital_id"],
+            risk_score=float(triage_result["confidence_score"] / 100.0),
+            risk_category=f"Level {triage_result['triage_level']}",
+            model_name="PatientTriage Risk Model",
+            model_version="1.0.0",
+            input_snapshot=patient_data,
+            generated_by=current_user["staff_id"]
+        )
+        db.add(new_assessment)
+        db.commit()
+        db.refresh(new_assessment)
+        assessment_id = new_assessment.assessment_id
+        
+        log_audit(db, current_user["hospital_id"], current_user["staff_id"], current_user["role"],
+                  f"Generated AI risk assessment (Level {triage_result['triage_level']}) for encounter {patient.encounter_id}",
+                  "ai_assessment", str(new_assessment.assessment_id))
+
     return {
         "ai_suggested_level": triage_result["triage_level"],
         "confidence_score": triage_result["confidence_score"] / 100.0, # map percentage to fractional
         "top_3_drivers": formatted_drivers[:3],
-        "auto_escalated": triage_result["auto_escalated"]
+        "auto_escalated": triage_result["auto_escalated"],
+        "assessment_id": assessment_id
     }
+
+@app.post("/api/v1/assessments/{assessment_id}/explanation", response_model=AIExplanationResponse)
+def generate_assessment_explanation(assessment_id: int, db: Session = Depends(get_db), current_user: dict = Depends(PermissionChecker(Permissions.TRIAGE_VIEW))):
+    # Ensure assessment exists and is authorized for this hospital
+    assessment = db.query(AIAssessment).filter(
+        AIAssessment.assessment_id == assessment_id,
+        AIAssessment.hospital_id == current_user["hospital_id"]
+    ).first()
+    if not assessment:
+        raise HTTPException(status_code=404, detail="AI Assessment not found or unauthorized.")
+        
+    try:
+        explanation = ExplainabilityService.generate_explanation(
+            db=db,
+            assessment_id=assessment_id,
+            model=engine.model,
+            features_list=engine.features,
+            current_user=current_user
+        )
+        return explanation
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Unable to generate AI explanation. Please try again.")
+
+@app.get("/api/v1/assessments/{assessment_id}/explanation", response_model=AIExplanationResponse)
+def get_assessment_explanation(assessment_id: int, db: Session = Depends(get_db), current_user: dict = Depends(PermissionChecker(Permissions.TRIAGE_VIEW))):
+    # Enforce multi-tenant hospital isolation
+    assessment = db.query(AIAssessment).filter(
+        AIAssessment.assessment_id == assessment_id,
+        AIAssessment.hospital_id == current_user["hospital_id"]
+    ).first()
+    if not assessment:
+        raise HTTPException(status_code=404, detail="AI Assessment not found or unauthorized.")
+        
+    explanation = db.query(AIExplanation).filter(
+        AIExplanation.ai_assessment_id == assessment_id,
+        AIExplanation.hospital_id == current_user["hospital_id"]
+    ).first()
+    
+    if not explanation:
+        raise HTTPException(status_code=404, detail="AI Explanation not found.")
+        
+    return explanation
 
 @app.post("/api/v1/triage/accept")
 def triage_accept(data: TriageAcceptInput, db: Session = Depends(get_db), current_user: dict = Depends(PermissionChecker(Permissions.TRIAGE_CREATE))):
