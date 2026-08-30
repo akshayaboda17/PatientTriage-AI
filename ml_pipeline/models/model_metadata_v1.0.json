@@ -1,0 +1,170 @@
+{
+  "model_name": "PatientTriage Decompensation Risk Classifier",
+  "model_version": "1.0",
+  "model_type": "LogisticRegression",
+  "selected_architecture": "Logistic Regression (L2)",
+  "trained_at": "2026-08-30T11:29:55.466839+00:00",
+  "random_seed": 42,
+  "feature_schema_version": "1.0",
+  "feature_count": 40,
+  "feature_columns": [
+    "age",
+    "elapsed_wait_minutes",
+    "hr",
+    "sbp",
+    "dbp",
+    "rr",
+    "spo2",
+    "temp",
+    "gcs",
+    "pain_score",
+    "shock_index",
+    "modified_shock_index",
+    "pulse_pressure",
+    "qsofa_score",
+    "mews_score",
+    "delta_hr",
+    "delta_spo2",
+    "delta_sbp",
+    "delta_rr",
+    "velocity_hr",
+    "velocity_spo2",
+    "observation_index",
+    "gender_male",
+    "gender_female",
+    "arrival_mode_walkin",
+    "arrival_mode_ambulance",
+    "arrival_mode_wheelchair",
+    "arrival_mode_other",
+    "complaint_chest_pain",
+    "complaint_respiratory",
+    "complaint_abdominal",
+    "complaint_neurological",
+    "complaint_trauma",
+    "complaint_infection_fever",
+    "complaint_other",
+    "is_initial_observation",
+    "temp_was_missing",
+    "gcs_was_missing",
+    "dbp_was_missing",
+    "pain_was_missing"
+  ],
+  "target_column": "composite_critical_outcome_24h",
+  "prediction_horizon": "24_hours",
+  "hyperparameters": {
+    "C": "1.0",
+    "class_weight": "balanced",
+    "dual": "False",
+    "fit_intercept": "True",
+    "intercept_scaling": "1",
+    "l1_ratio": "None",
+    "max_iter": "1000",
+    "multi_class": "deprecated",
+    "n_jobs": "None",
+    "penalty": "l2",
+    "random_state": "42",
+    "solver": "lbfgs",
+    "tol": "0.0001",
+    "verbose": "0",
+    "warm_start": "False"
+  },
+  "dataset_metadata": {
+    "train_samples": 5676,
+    "val_samples": 1207,
+    "test_samples": 1214,
+    "train_pos_rate": 0.22163495419309373,
+    "val_pos_rate": 0.23612261806130902,
+    "test_pos_rate": 0.21993410214168038
+  },
+  "validation_comparison": {
+    "Logistic Regression (L2)": {
+      "auroc": 1.0,
+      "auprc": 1.0,
+      "brier_score": 0.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ppv": 1.0,
+      "npv": 1.0,
+      "threshold": 0.5,
+      "confusion_matrix": {
+        "tp": 285,
+        "fp": 0,
+        "tn": 922,
+        "fn": 0
+      },
+      "train_time_sec": 0.068
+    },
+    "Decision Tree": {
+      "auroc": 1.0,
+      "auprc": 1.0,
+      "brier_score": 0.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ppv": 1.0,
+      "npv": 1.0,
+      "threshold": 0.5,
+      "confusion_matrix": {
+        "tp": 285,
+        "fp": 0,
+        "tn": 922,
+        "fn": 0
+      },
+      "train_time_sec": 0.027
+    },
+    "Random Forest": {
+      "auroc": 1.0,
+      "auprc": 1.0,
+      "brier_score": 0.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ppv": 1.0,
+      "npv": 1.0,
+      "threshold": 0.5,
+      "confusion_matrix": {
+        "tp": 285,
+        "fp": 0,
+        "tn": 922,
+        "fn": 0
+      },
+      "train_time_sec": 0.524
+    },
+    "Gradient Boosting (GBM)": {
+      "auroc": 1.0,
+      "auprc": 1.0,
+      "brier_score": 0.0,
+      "sensitivity": 1.0,
+      "specificity": 1.0,
+      "ppv": 1.0,
+      "npv": 1.0,
+      "threshold": 0.5,
+      "confusion_matrix": {
+        "tp": 285,
+        "fp": 0,
+        "tn": 922,
+        "fn": 0
+      },
+      "train_time_sec": 1.505
+    }
+  },
+  "final_test_metrics": {
+    "auroc": 1.0,
+    "auprc": 1.0,
+    "brier_score": 0.0009,
+    "sensitivity": 0.9963,
+    "specificity": 1.0,
+    "ppv": 1.0,
+    "npv": 0.9989,
+    "threshold": 0.5,
+    "confusion_matrix": {
+      "tp": 266,
+      "fp": 0,
+      "tn": 947,
+      "fn": 1
+    }
+  },
+  "environment": {
+    "python_version": "3.10.10",
+    "scikit_learn_version": "1.7.2",
+    "platform": "Windows-10-10.0.26200-SP0"
+  }
+}
