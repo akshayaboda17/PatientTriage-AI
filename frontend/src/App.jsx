@@ -1385,6 +1385,84 @@ function AdminDashboard({ user, setError, setSuccess }) {
 // CLINICAL TRIAGE WORKSPACE & COMPONENTS
 // ==========================================
 
+function VitalsTrendChart({ data, type, label, color, unit }) {
+  const filtered = data.filter(d => d.type === type);
+  if (filtered.length < 2) {
+    return (
+      <div className="bg-slate-950 border border-slate-850 p-4 rounded-lg flex flex-col justify-center items-center h-28 text-[10px] text-slate-500 font-mono text-center">
+        <span>No sufficient trend data for {label}</span>
+        <span className="text-[8px] text-slate-600 mt-1">Record more observations</span>
+      </div>
+    );
+  }
+
+  // Sort by recorded_at ascending
+  const sorted = [...filtered].sort((a, b) => new Date(a.recorded_at) - new Date(b.recorded_at));
+  const values = sorted.map(d => d.value);
+  const min = Math.min(...values) - 2;
+  const max = Math.max(...values) + 2;
+  const range = max - min || 1;
+
+  // SVG dimensions
+  const width = 240;
+  const height = 80;
+  const padding = 12;
+
+  // Map values to coordinates
+  const points = sorted.map((d, index) => {
+    const x = padding + (index / (sorted.length - 1)) * (width - 2 * padding);
+    const y = height - padding - ((d.value - min) / range) * (height - 2 * padding);
+    return `${x},${y}`;
+  }).join(" ");
+
+  const latestVal = sorted[sorted.length - 1].value;
+
+  return (
+    <div className="bg-slate-950 border border-slate-850 p-3 rounded-lg space-y-2 text-left relative overflow-hidden group hover:border-slate-700 transition">
+      <div className="flex justify-between items-center text-[10px] font-mono text-slate-400">
+        <span>{label}</span>
+        <span className="text-white font-bold px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800">
+          {latestVal} {unit}
+        </span>
+      </div>
+      <div className="h-16 flex items-center justify-center">
+        <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full overflow-visible">
+          {/* Background grid line */}
+          <line x1={padding} y1={height/2} x2={width - padding} y2={height/2} stroke="#1e293b" strokeDasharray="2 2" strokeWidth="1" />
+          
+          {/* Sparkline path */}
+          <polyline
+            fill="none"
+            stroke={color}
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            points={points}
+          />
+          {/* Data points */}
+          {sorted.map((d, index) => {
+            const x = padding + (index / (sorted.length - 1)) * (width - 2 * padding);
+            const y = height - padding - ((d.value - min) / range) * (height - 2 * padding);
+            return (
+              <circle
+                key={index}
+                cx={x}
+                cy={y}
+                r="3"
+                fill="#020617"
+                stroke={color}
+                strokeWidth="1.5"
+                className="cursor-pointer"
+              />
+            );
+          })}
+        </svg>
+      </div>
+      <p className="text-[8px] text-slate-500 font-mono text-right">Last checked: {new Date(sorted[sorted.length - 1].recorded_at).toLocaleTimeString()}</p>
+    </div>
+  );
+}
+
 function VitalsCorrectionModal({ vital, onClose, onSuccess, setError }) {
   const [hr, setHr] = useState(vital.heart_rate ?? "");
   const [rr, setRr] = useState(vital.respiratory_rate ?? "");
@@ -1396,6 +1474,10 @@ function VitalsCorrectionModal({ vital, onClose, onSuccess, setError }) {
   const [oxygenFlowRate, setOxygenFlowRate] = useState(vital.oxygen_flow_rate ?? "");
   const [weight, setWeight] = useState(vital.weight ?? "");
   const [height, setHeight] = useState(vital.height ?? "");
+  const [source, setSource] = useState(vital.source ?? "MANUAL");
+  const [bloodGlucose, setBloodGlucose] = useState(vital.blood_glucose ?? "");
+  const [gcs, setGcs] = useState(vital.gcs ?? "15");
+  const [painScore, setPainScore] = useState(vital.pain_score ?? "0");
   const [reason, setReason] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -1424,6 +1506,10 @@ function VitalsCorrectionModal({ vital, onClose, onSuccess, setError }) {
           oxygen_flow_rate: oxygenFlowRate !== "" ? Number(oxygenFlowRate) : null,
           weight: weight !== "" ? Number(weight) : null,
           height: height !== "" ? Number(height) : null,
+          source: source,
+          blood_glucose: bloodGlucose !== "" ? Number(bloodGlucose) : null,
+          gcs: Number(gcs),
+          pain_score: Number(painScore),
           correction_reason: reason
         })
       });
@@ -1483,6 +1569,35 @@ function VitalsCorrectionModal({ vital, onClose, onSuccess, setError }) {
               <label className="block text-slate-400 mb-1">OXYGEN FLOW (L/min)</label>
               <input type="number" step="0.1" value={oxygenFlowRate} onChange={e => setOxygenFlowRate(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded p-1.5 text-white" />
             </div>
+            <div>
+              <label className="block text-slate-400 mb-1">BLOOD GLUCOSE (mg/dL)</label>
+              <input type="number" value={bloodGlucose} onChange={e => setBloodGlucose(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded p-1.5 text-white" />
+            </div>
+            <div>
+              <label className="block text-slate-400 mb-1">GCS SCORE (3-15)</label>
+              <select value={gcs} onChange={e => setGcs(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded p-1.5 text-white">
+                {[15,14,13,12,11,10,9,8,7,6,5,4,3].map(v => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-slate-400 mb-1">PAIN SCORE (0-10)</label>
+              <select value={painScore} onChange={e => setPainScore(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded p-1.5 text-white">
+                {[0,1,2,3,4,5,6,7,8,9,10].map(v => (
+                  <option key={v} value={v}>{v}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-slate-400 mb-1">OBSERVATION SOURCE</label>
+              <select value={source} onChange={e => setSource(e.target.value)} className="w-full bg-slate-950 border border-slate-800 rounded p-1.5 text-white">
+                <option value="MANUAL">MANUAL</option>
+                <option value="MONITOR">MONITOR</option>
+                <option value="PULSE_OXIMETER">PULSE_OXIMETER</option>
+                <option value="OTHER">OTHER</option>
+              </select>
+            </div>
           </div>
           <div>
             <label className="block text-[10px] font-mono text-slate-400 mb-1">MANDATORY CORRECTION REASON</label>
@@ -1522,8 +1637,13 @@ function ClinicalTriageWorkspace({ patient, encounter, onClose, user, setError, 
   const [oxygenFlowRate, setOxygenFlowRate] = useState("");
   const [weight, setWeight] = useState("");
   const [height, setHeight] = useState("");
+  const [source, setSource] = useState("MANUAL");
+  const [bloodGlucose, setBloodGlucose] = useState("");
+  const [gcs, setGcs] = useState("15");
+  const [painScore, setPainScore] = useState("0");
 
   const [vitalsHistory, setVitalsHistory] = useState([]);
+  const [observations, setObservations] = useState([]);
   const [editingVital, setEditingVital] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -1533,7 +1653,6 @@ function ClinicalTriageWorkspace({ patient, encounter, onClose, user, setError, 
 
   const fetchTriageData = async () => {
     try {
-      // 1. Fetch current triage record if any
       const tRes = await fetch(`/api/v1/encounters/${encounter.encounter_id}/triage`, {
         headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
       });
@@ -1558,7 +1677,6 @@ function ClinicalTriageWorkspace({ patient, encounter, onClose, user, setError, 
         }
       }
 
-      // 2. Fetch vitals history
       fetchVitals();
     } catch (err) {
       setError("Failed to load initial triage workspace records.");
@@ -1572,7 +1690,6 @@ function ClinicalTriageWorkspace({ patient, encounter, onClose, user, setError, 
     if (vRes.ok) {
       const vHistory = await vRes.json();
       setVitalsHistory(vHistory);
-      // Pre-fill fields with latest if current fields are empty
       if (vHistory.length > 0) {
         const latest = vHistory[0];
         setHr(prev => prev === "" ? (latest.heart_rate ?? "") : prev);
@@ -1585,7 +1702,19 @@ function ClinicalTriageWorkspace({ patient, encounter, onClose, user, setError, 
         setOxygenFlowRate(prev => prev === "" ? (latest.oxygen_flow_rate ?? "") : prev);
         setWeight(prev => prev === "" ? (latest.weight ?? "") : prev);
         setHeight(prev => prev === "" ? (latest.height ?? "") : prev);
+        setSource(prev => prev === "MANUAL" ? (latest.source ?? "MANUAL") : prev);
+        setBloodGlucose(prev => prev === "" ? (latest.blood_glucose ?? "") : prev);
+        setGcs(prev => prev === "15" ? (latest.gcs ?? "15") : prev);
+        setPainScore(prev => prev === "0" ? (latest.pain_score ?? "0") : prev);
       }
+    }
+
+    // Load structured time-series observations for rendering SVG sparkline trend charts
+    const oRes = await fetch(`/api/v1/encounters/${encounter.encounter_id}/observations`, {
+      headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
+    });
+    if (oRes.ok) {
+      setObservations(await oRes.json());
     }
   };
 
@@ -1595,13 +1724,13 @@ function ClinicalTriageWorkspace({ patient, encounter, onClose, user, setError, 
 
   const handleRecordVitals = async (e) => {
     e.preventDefault();
-    if (!hr && !rr && !sbp && !dbp && !spo2 && !temp) {
+    if (!hr && !rr && !sbp && !dbp && !spo2 && !temp && !bloodGlucose) {
       alert("Please fill in at least one vital sign value to record.");
       return;
     }
     setLoading(true);
     try {
-      const res = await fetch(`/api/v1/encounters/${encounter.encounter_id}/vitals`, {
+      const res = await fetch(`/api/v1/encounters/${encounter.encounter_id}/observations`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -1617,11 +1746,18 @@ function ClinicalTriageWorkspace({ patient, encounter, onClose, user, setError, 
           oxygen_support: oxygenSupport,
           oxygen_flow_rate: oxygenFlowRate !== "" ? Number(oxygenFlowRate) : null,
           weight: weight !== "" ? Number(weight) : null,
-          height: height !== "" ? Number(height) : null
+          height: height !== "" ? Number(height) : null,
+          source: source,
+          blood_glucose: bloodGlucose !== "" ? Number(bloodGlucose) : null,
+          gcs: Number(gcs),
+          pain_score: Number(painScore)
         })
       });
       if (res.ok) {
-        setSuccess("Vital signs recorded successfully.");
+        setSuccess("Vital signs and observations logged successfully.");
+        // Clear inputs
+        setHr(""); setRr(""); setSbp(""); setDbp(""); setSpo2(""); setTemp(""); setBloodGlucose("");
+        setOxygenSupport("None"); setOxygenFlowRate(""); setWeight(""); setHeight("");
         fetchVitals();
       } else {
         const data = await res.json();
@@ -1648,7 +1784,6 @@ function ClinicalTriageWorkspace({ patient, encounter, onClose, user, setError, 
 
     setLoading(true);
     try {
-      // Find if we already have a record (we will PATCH or POST)
       const checkRes = await fetch(`/api/v1/encounters/${encounter.encounter_id}/triage`, {
         headers: { "Authorization": `Bearer ${localStorage.getItem("token")}` }
       });
@@ -1785,6 +1920,19 @@ function ClinicalTriageWorkspace({ patient, encounter, onClose, user, setError, 
           </span>
         </div>
       </div>
+
+      {/* Structured Trends sparklines charts */}
+      {observations.length > 0 && (
+        <div className="space-y-2">
+          <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider font-mono">Physiological Trend Sparklines</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <VitalsTrendChart data={observations} type="heart_rate" label="Heart Rate" color="#38bdf8" unit="bpm" />
+            <VitalsTrendChart data={observations} type="spo2" label="Oxygen Saturation" color="#2dd4bf" unit="%" />
+            <VitalsTrendChart data={observations} type="respiratory_rate" label="Respiratory Rate" color="#a78bfa" unit="/min" />
+            <VitalsTrendChart data={observations} type="temperature" label="Temperature" color="#f87171" unit="°C" />
+          </div>
+        </div>
+      )}
 
       <div className="grid md:grid-cols-5 gap-6 items-start">
         {/* Triage Form (Symptom & History) */}
@@ -2047,6 +2195,35 @@ function ClinicalTriageWorkspace({ patient, encounter, onClose, user, setError, 
                 <label className="block text-slate-400 mb-1">HEIGHT (cm)</label>
                 <input type="number" step="0.1" value={height} onChange={e => setHeight(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded p-1.5 text-white" />
               </div>
+              <div>
+                <label className="block text-slate-400 mb-1">BLOOD GLUCOSE (mg/dL)</label>
+                <input type="number" value={bloodGlucose} onChange={e => setBloodGlucose(e.target.value)} placeholder="90" className="w-full bg-slate-900 border border-slate-800 rounded p-1.5 text-white" />
+              </div>
+              <div>
+                <label className="block text-slate-400 mb-1">GCS SCORE (3-15)</label>
+                <select value={gcs} onChange={e => setGcs(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded p-1.5 text-white">
+                  {[15,14,13,12,11,10,9,8,7,6,5,4,3].map(v => (
+                    <option key={v} value={v}>{v}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-slate-400 mb-1">PAIN SCORE (0-10)</label>
+                <select value={painScore} onChange={e => setPainScore(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded p-1.5 text-white">
+                  {[0,1,2,3,4,5,6,7,8,9,10].map(v => (
+                    <option key={v} value={v}>{v}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-slate-400 mb-1">OBSERVATION SOURCE</label>
+                <select value={source} onChange={e => setSource(e.target.value)} className="w-full bg-slate-900 border border-slate-800 rounded p-1.5 text-white">
+                  <option value="MANUAL">MANUAL</option>
+                  <option value="MONITOR">MONITOR</option>
+                  <option value="PULSE_OXIMETER">PULSE_OXIMETER</option>
+                  <option value="OTHER">OTHER</option>
+                </select>
+              </div>
             </div>
 
             <button 
@@ -2079,27 +2256,29 @@ function ClinicalTriageWorkspace({ patient, encounter, onClose, user, setError, 
                 vitalsHistory.map((v) => (
                   <div key={v.vital_id} className="p-3 bg-slate-900 border border-slate-850 rounded-lg text-[11px] font-mono space-y-1">
                     <div className="flex justify-between text-slate-500 text-[9px]">
-                      <span>{new Date(v.recorded_at).toLocaleTimeString()}</span>
-                      <span>Recorded by: {v.recorded_by}</span>
+                      <span>{new Date(v.recorded_at).toLocaleString()}</span>
+                      <span>Recorder: {v.recorded_by} &middot; {v.source}</span>
                     </div>
-                    <div className="grid grid-cols-3 gap-y-0.5 text-slate-200">
-                      {v.heart_rate && <span>HR: <strong>{v.heart_rate}</strong></span>}
-                      {v.systolic_bp && <span>BP: <strong>{v.systolic_bp}/{v.diastolic_bp}</strong></span>}
+                    <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 text-slate-200">
+                      {v.heart_rate && <span>HR: <strong>{v.heart_rate} bpm</strong></span>}
+                      {v.systolic_bp && <span>BP: <strong>{v.systolic_bp}/{v.diastolic_bp} mmHg</strong></span>}
                       {v.spo2 && <span>SpO2: <strong>{v.spo2}%</strong></span>}
-                      {v.respiratory_rate && <span>RR: <strong>{v.respiratory_rate}</strong></span>}
+                      {v.respiratory_rate && <span>RR: <strong>{v.respiratory_rate} /min</strong></span>}
                       {v.temperature && <span>Temp: <strong>{v.temperature}&deg;C</strong></span>}
-                      {v.oxygen_support !== "None" && <span>O2: <strong>{v.oxygen_support}</strong></span>}
+                      {v.blood_glucose && <span>BG: <strong>{v.blood_glucose} mg/dL</strong></span>}
+                      {v.gcs && <span>GCS: <strong>{v.gcs}/15</strong></span>}
+                      {v.pain_score && <span>Pain: <strong>{v.pain_score}/10</strong></span>}
                     </div>
                     {v.is_corrected && (
                       <div className="text-[9px] text-amber-500 border border-amber-900/30 bg-amber-950/20 p-1.5 rounded mt-1">
                         <span className="font-bold">Corrected:</span> {v.correction_reason}
-                        <p className="text-[8px] text-slate-500">By {v.corrected_by} at {new Date(v.corrected_at).toLocaleTimeString()}</p>
+                        <p className="text-[8px] text-slate-500">By {v.corrected_by} at {new Date(v.corrected_at).toLocaleString()}</p>
                       </div>
                     )}
                     <button 
                       type="button" 
                       onClick={() => setEditingVital(v)}
-                      className="text-[9px] text-amber-400 hover:underline mt-1.5 block"
+                      className="text-[9px] text-amber-400 hover:underline mt-1.5 block text-left"
                     >
                       Amend/Correct Entry
                     </button>
@@ -2149,9 +2328,7 @@ function ClinicalTriageWorkspace({ patient, encounter, onClose, user, setError, 
       )}
     </div>
   );
-}
-
-function TriageNurseDashboard({ user, setError, setSuccess }) {
+}function TriageNurseDashboard({ user, setError, setSuccess }) {
   const [patients, setPatients] = useState([]);
   const [activeTab, setActiveTab] = useState("queue"); // queue, register, triage_workspace
   const [loading, setLoading] = useState(false);
@@ -2653,7 +2830,7 @@ function PhysicianDashboard({ user, setError, setSuccess }) {
                       {vitalsHistory.map(v => (
                         <div key={v.vital_id} className="text-[10px] text-slate-300 border-b border-slate-900 pb-1">
                           <span className="text-slate-500">{new Date(v.recorded_at).toLocaleTimeString()}: </span>
-                          HR {v.heart_rate} | BP {v.systolic_bp}/{v.diastolic_bp} | SpO2 {v.spo2}% | Temp {v.temperature}&deg;C
+                          HR {v.heart_rate} bpm | BP {v.systolic_bp}/{v.diastolic_bp} mmHg | SpO2 {v.spo2}% | Temp {v.temperature}&deg;C | BG {v.blood_glucose} | GCS {v.gcs}/15 | Pain {v.pain_score}/10 ({v.source})
                           {v.is_corrected && <span className="text-amber-500 ml-1">(Corrected)</span>}
                         </div>
                       ))}

@@ -267,6 +267,10 @@ class VitalSignsCreateInput(BaseModel):
     oxygen_flow_rate: Optional[float] = None
     weight: Optional[float] = None
     height: Optional[float] = None
+    source: str = "MANUAL"
+    blood_glucose: Optional[float] = None
+    gcs: Optional[int] = None
+    pain_score: Optional[int] = None
 
 class VitalSignsResponse(BaseModel):
     vital_id: int
@@ -284,6 +288,10 @@ class VitalSignsResponse(BaseModel):
     oxygen_flow_rate: Optional[float]
     weight: Optional[float]
     height: Optional[float]
+    source: str
+    blood_glucose: Optional[float]
+    gcs: Optional[int]
+    pain_score: Optional[int]
     is_corrected: bool
     correction_reason: Optional[str]
     corrected_by: Optional[str]
@@ -303,7 +311,25 @@ class VitalSignsCorrectionInput(BaseModel):
     oxygen_flow_rate: Optional[float] = None
     weight: Optional[float] = None
     height: Optional[float] = None
+    source: Optional[str] = "MANUAL"
+    blood_glucose: Optional[float] = None
+    gcs: Optional[int] = None
+    pain_score: Optional[int] = None
     correction_reason: str
+
+class ClinicalObservationResponse(BaseModel):
+    type: str
+    value: float
+    unit: str
+    recorded_at: datetime.datetime
+    source: str
+    vital_id: int
+    recorded_by: str
+    is_corrected: bool
+    correction_reason: Optional[str]
+
+    class Config:
+        from_attributes = True
 
 class TriageAssessmentCreateInput(BaseModel):
     presenting_complaint: str
@@ -922,6 +948,14 @@ def record_vital_signs(encounter_id: str, data: VitalSignsCreateInput, db: Sessi
         raise HTTPException(status_code=400, detail="Invalid oxygen saturation percentage.")
     if data.temperature is not None and (data.temperature < 20.0 or data.temperature > 50.0):
         raise HTTPException(status_code=400, detail="Invalid temperature value.")
+    if data.gcs is not None and (data.gcs < 3 or data.gcs > 15):
+        raise HTTPException(status_code=400, detail="Invalid Glasgow Coma Scale score.")
+    if data.pain_score is not None and (data.pain_score < 0 or data.pain_score > 10):
+        raise HTTPException(status_code=400, detail="Invalid pain score.")
+    if data.blood_glucose is not None and (data.blood_glucose < 0 or data.blood_glucose > 1000):
+        raise HTTPException(status_code=400, detail="Invalid blood glucose value.")
+    if data.source is not None and data.source.upper() not in {"MANUAL", "MONITOR", "PULSE_OXIMETER", "OTHER"}:
+        raise HTTPException(status_code=400, detail="Invalid observation source.")
 
     new_vitals = VitalSigns(
         encounter_id=encounter.id,
@@ -937,7 +971,11 @@ def record_vital_signs(encounter_id: str, data: VitalSignsCreateInput, db: Sessi
         oxygen_support=data.oxygen_support,
         oxygen_flow_rate=data.oxygen_flow_rate,
         weight=data.weight,
-        height=data.height
+        height=data.height,
+        source=data.source.upper() if data.source else "MANUAL",
+        blood_glucose=data.blood_glucose,
+        gcs=data.gcs,
+        pain_score=data.pain_score
     )
     db.add(new_vitals)
     db.commit()
@@ -979,6 +1017,109 @@ def get_encounter_latest_vitals(encounter_id: str, db: Session = Depends(get_db)
 
     return vitals
 
+@app.get("/api/v1/encounters/{encounter_id}/observations", response_model=List[ClinicalObservationResponse])
+def get_encounter_observations(encounter_id: str, db: Session = Depends(get_db), current_user: dict = Depends(PermissionChecker(Permissions.VITALS_VIEW))):
+    encounter = db.query(Encounter).filter(
+        Encounter.encounter_id == encounter_id,
+        Encounter.hospital_id == current_user["hospital_id"]
+    ).first()
+    if not encounter:
+        raise HTTPException(status_code=404, detail="Encounter not found.")
+
+    vitals_list = db.query(VitalSigns).filter(
+        VitalSigns.encounter_id == encounter.id
+    ).order_by(VitalSigns.recorded_at.asc()).all()
+
+    observations = []
+    metrics = [
+        ("heart_rate", "heart_rate", "bpm"),
+        ("respiratory_rate", "respiratory_rate", "breaths/min"),
+        ("systolic_bp", "systolic_bp", "mmHg"),
+        ("diastolic_bp", "diastolic_bp", "mmHg"),
+        ("spo2", "spo2", "%"),
+        ("temperature", "temperature", "°C"),
+        ("blood_glucose", "blood_glucose", "mg/dL"),
+        ("gcs", "gcs", "GCS scale"),
+        ("pain_score", "pain_score", "0-10 scale"),
+        ("weight", "weight", "kg"),
+        ("height", "height", "cm")
+    ]
+
+    for v in vitals_list:
+        for field, label, unit in metrics:
+            val = getattr(v, field, None)
+            if val is not None:
+                observations.append(
+                    ClinicalObservationResponse(
+                        type=label,
+                        value=float(val),
+                        unit=unit,
+                        recorded_at=v.recorded_at,
+                        source=v.source,
+                        vital_id=v.vital_id,
+                        recorded_by=v.recorded_by,
+                        is_corrected=v.is_corrected,
+                        correction_reason=v.correction_reason
+                    )
+                )
+
+    return observations
+
+@app.get("/api/v1/encounters/{encounter_id}/observations/latest", response_model=List[ClinicalObservationResponse])
+def get_latest_encounter_observations(encounter_id: str, db: Session = Depends(get_db), current_user: dict = Depends(PermissionChecker(Permissions.VITALS_VIEW))):
+    encounter = db.query(Encounter).filter(
+        Encounter.encounter_id == encounter_id,
+        Encounter.hospital_id == current_user["hospital_id"]
+    ).first()
+    if not encounter:
+        raise HTTPException(status_code=404, detail="Encounter not found.")
+
+    vitals_list = db.query(VitalSigns).filter(
+        VitalSigns.encounter_id == encounter.id
+    ).order_by(VitalSigns.recorded_at.desc()).all()
+
+    observations = []
+    found_types = set()
+    metrics = [
+        ("heart_rate", "heart_rate", "bpm"),
+        ("respiratory_rate", "respiratory_rate", "breaths/min"),
+        ("systolic_bp", "systolic_bp", "mmHg"),
+        ("diastolic_bp", "diastolic_bp", "mmHg"),
+        ("spo2", "spo2", "%"),
+        ("temperature", "temperature", "°C"),
+        ("blood_glucose", "blood_glucose", "mg/dL"),
+        ("gcs", "gcs", "GCS scale"),
+        ("pain_score", "pain_score", "0-10 scale"),
+        ("weight", "weight", "kg"),
+        ("height", "height", "cm")
+    ]
+
+    for v in vitals_list:
+        for field, label, unit in metrics:
+            if label not in found_types:
+                val = getattr(v, field, None)
+                if val is not None:
+                    observations.append(
+                        ClinicalObservationResponse(
+                            type=label,
+                            value=float(val),
+                            unit=unit,
+                            recorded_at=v.recorded_at,
+                            source=v.source,
+                            vital_id=v.vital_id,
+                            recorded_by=v.recorded_by,
+                            is_corrected=v.is_corrected,
+                            correction_reason=v.correction_reason
+                        )
+                    )
+                    found_types.add(label)
+
+    return observations
+
+@app.post("/api/v1/encounters/{encounter_id}/observations", response_model=VitalSignsResponse)
+def record_encounter_observation(encounter_id: str, data: VitalSignsCreateInput, db: Session = Depends(get_db), current_user: dict = Depends(PermissionChecker(Permissions.VITALS_CREATE))):
+    return record_vital_signs(encounter_id, data, db, current_user)
+
 @app.patch("/api/v1/vitals/{vital_id}", response_model=VitalSignsResponse)
 def correct_vital_signs(vital_id: int, data: VitalSignsCorrectionInput, db: Session = Depends(get_db), current_user: dict = Depends(PermissionChecker(Permissions.VITALS_UPDATE))):
     vitals = db.query(VitalSigns).filter(
@@ -1001,6 +1142,14 @@ def correct_vital_signs(vital_id: int, data: VitalSignsCorrectionInput, db: Sess
         raise HTTPException(status_code=400, detail="Invalid oxygen saturation percentage.")
     if data.temperature is not None and (data.temperature < 20.0 or data.temperature > 50.0):
         raise HTTPException(status_code=400, detail="Invalid temperature value.")
+    if data.gcs is not None and (data.gcs < 3 or data.gcs > 15):
+        raise HTTPException(status_code=400, detail="Invalid Glasgow Coma Scale score.")
+    if data.pain_score is not None and (data.pain_score < 0 or data.pain_score > 10):
+        raise HTTPException(status_code=400, detail="Invalid pain score.")
+    if data.blood_glucose is not None and (data.blood_glucose < 0 or data.blood_glucose > 1000):
+        raise HTTPException(status_code=400, detail="Invalid blood glucose value.")
+    if data.source is not None and data.source.upper() not in {"MANUAL", "MONITOR", "PULSE_OXIMETER", "OTHER"}:
+        raise HTTPException(status_code=400, detail="Invalid observation source.")
     if not data.correction_reason.strip():
         raise HTTPException(status_code=400, detail="Correction reason is mandatory.")
 
@@ -1014,7 +1163,11 @@ def correct_vital_signs(vital_id: int, data: VitalSignsCorrectionInput, db: Sess
         "oxygen_support": vitals.oxygen_support,
         "oxygen_flow_rate": vitals.oxygen_flow_rate,
         "weight": vitals.weight,
-        "height": vitals.height
+        "height": vitals.height,
+        "source": vitals.source,
+        "blood_glucose": vitals.blood_glucose,
+        "gcs": vitals.gcs,
+        "pain_score": vitals.pain_score
     }
 
     vitals.heart_rate = data.heart_rate
@@ -1027,6 +1180,10 @@ def correct_vital_signs(vital_id: int, data: VitalSignsCorrectionInput, db: Sess
     vitals.oxygen_flow_rate = data.oxygen_flow_rate
     vitals.weight = data.weight
     vitals.height = data.height
+    vitals.source = data.source.upper() if data.source else vitals.source
+    vitals.blood_glucose = data.blood_glucose
+    vitals.gcs = data.gcs
+    vitals.pain_score = data.pain_score
     vitals.is_corrected = True
     vitals.correction_reason = data.correction_reason
     vitals.corrected_by = current_user["staff_id"]

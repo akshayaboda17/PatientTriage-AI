@@ -211,6 +211,10 @@ class VitalSigns(Base):
     oxygen_flow_rate = Column(Float, nullable=True)
     weight = Column(Float, nullable=True)
     height = Column(Float, nullable=True)
+    source = Column(String(50), default="MANUAL", nullable=False) # MANUAL, MONITOR, PULSE_OXIMETER, OTHER
+    blood_glucose = Column(Float, nullable=True)
+    gcs = Column(Integer, nullable=True)
+    pain_score = Column(Integer, nullable=True)
     is_corrected = Column(Boolean, default=False, nullable=False)
     correction_reason = Column(Text, nullable=True)
     corrected_by = Column(String(50), ForeignKey('staffs.staff_id'), nullable=True)
@@ -431,6 +435,73 @@ def seed_database():
             )
             db.add(demo_encounter)
             db.commit()
+
+        # Seed longitudinal observations for ENC-DEMO-001
+        db_enc = db.query(Encounter).filter_by(encounter_id="ENC-DEMO-001").first()
+        if db_enc:
+            existing_vitals = db.query(VitalSigns).filter_by(encounter_id=db_enc.id).first()
+            if not existing_vitals:
+                now = datetime.datetime.utcnow()
+                t1 = datetime.datetime(now.year, now.month, now.day, 10, 40)
+                t2 = datetime.datetime(now.year, now.month, now.day, 10, 55)
+                t3 = datetime.datetime(now.year, now.month, now.day, 11, 10)
+                
+                v1 = VitalSigns(
+                    encounter_id=db_enc.id,
+                    hospital_id="DEMO001",
+                    recorded_by="NUR001",
+                    recorded_at=t1,
+                    heart_rate=98,
+                    spo2=96,
+                    respiratory_rate=18,
+                    temperature=37.1,
+                    systolic_bp=130,
+                    diastolic_bp=85,
+                    oxygen_support="None",
+                    source="MONITOR",
+                    blood_glucose=110.0,
+                    gcs=15,
+                    pain_score=4
+                )
+                v2 = VitalSigns(
+                    encounter_id=db_enc.id,
+                    hospital_id="DEMO001",
+                    recorded_by="NUR001",
+                    recorded_at=t2,
+                    heart_rate=108,
+                    spo2=93,
+                    respiratory_rate=22,
+                    temperature=37.5,
+                    systolic_bp=138,
+                    diastolic_bp=88,
+                    oxygen_support="None",
+                    source="MONITOR",
+                    blood_glucose=115.0,
+                    gcs=15,
+                    pain_score=5
+                )
+                v3 = VitalSigns(
+                    encounter_id=db_enc.id,
+                    hospital_id="DEMO001",
+                    recorded_by="NUR001",
+                    recorded_at=t3,
+                    heart_rate=121,
+                    spo2=89,
+                    respiratory_rate=28,
+                    temperature=38.2,
+                    systolic_bp=145,
+                    diastolic_bp=92,
+                    oxygen_support="Nasal Cannula",
+                    oxygen_flow_rate=2.0,
+                    source="MONITOR",
+                    blood_glucose=120.0,
+                    gcs=14,
+                    pain_score=6
+                )
+                db.add(v1)
+                db.add(v2)
+                db.add(v3)
+                db.commit()
 
     finally:
         db.close()
