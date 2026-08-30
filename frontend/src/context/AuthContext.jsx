@@ -6,6 +6,7 @@ export const DEMO_USERS = [
   { staff_id: 'DOC001', name: 'Dr. Gregory House, MD', role: 'EMERGENCY_PHYSICIAN', hospital_id: 'DEMO001', role_label: 'Emergency Physician' },
   { staff_id: 'NUR001', name: 'Jackie Peyton, RN', role: 'TRIAGE_NURSE', hospital_id: 'DEMO001', role_label: 'Triage Nurse' },
   { staff_id: 'ADMIN001', name: 'Sarah Connor, MHA', role: 'HOSPITAL_ADMIN', hospital_id: 'DEMO001', role_label: 'Hospital Admin' },
+  { staff_id: 'DIR001', name: 'Dr. James Wilson, MD', role: 'CLINICAL_DIRECTOR', hospital_id: 'DEMO001', role_label: 'Clinical Director' },
   { staff_id: 'TECH001', name: 'John Carter, EMT-P', role: 'EMERGENCY_TECHNICIAN', hospital_id: 'DEMO001', role_label: 'Emergency Tech' },
   { staff_id: 'DOC002_METRO', name: 'Dr. Allison Cameron, MD', role: 'EMERGENCY_PHYSICIAN', hospital_id: 'METRO002', role_label: 'Emergency Physician (Metro)' }
 ];

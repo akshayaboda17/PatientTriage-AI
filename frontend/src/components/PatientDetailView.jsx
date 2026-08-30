@@ -3,8 +3,10 @@ import { useAuth } from '../context/AuthContext';
 import { 
   ArrowLeft, Activity, Heart, ShieldAlert, AlertTriangle, AlertOctagon,
   Clock, CheckCircle2, FileText, PlusCircle, Check, XCircle, Sparkles,
-  TrendingUp, TrendingDown, UserCheck, Stethoscope, ChevronDown, ChevronUp
+  TrendingUp, TrendingDown, UserCheck, Stethoscope, ChevronDown, ChevronUp,
+  Edit2, RefreshCw, AlertCircle, Info, Scale
 } from 'lucide-react';
+import { ObservationCorrectionModal } from './ObservationCorrectionModal';
 
 export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertStateChanged }) => {
   const { authHeaders, hasPermission, addToast, currentStaff } = useAuth();
@@ -26,7 +28,13 @@ export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertSt
   });
   const [submittingVitals, setSubmittingVitals] = useState(false);
 
-  // Resolution modal state
+  // AI Assessment Trigger
+  const [generatingAi, setGeneratingAi] = useState(false);
+
+  // Observation Correction modal state
+  const [selectedObsForCorrection, setSelectedObsForCorrection] = useState(null);
+
+  // Alert Resolution modal state
   const [selectedAlertForAction, setSelectedAlertForAction] = useState(null);
   const [actionType, setActionType] = useState(null); // 'resolve' or 'dismiss'
   const [actionReason, setActionReason] = useState('');
@@ -92,6 +100,28 @@ export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertSt
       addToast("Network error submitting vitals.", "error");
     } finally {
       setSubmittingVitals(false);
+    }
+  };
+
+  const handleGenerateAiAssessment = async () => {
+    setGeneratingAi(true);
+    try {
+      const res = await fetch(`/api/encounters/${encounterId}/ai-assessment`, {
+        method: 'POST',
+        headers: authHeaders
+      });
+
+      if (res.ok) {
+        addToast("AI Risk Assessment and SHAP explanation generated successfully.", "success");
+        fetchDetails();
+      } else {
+        const err = await res.json();
+        addToast(err.detail || "AI assessment unavailable.", "error");
+      }
+    } catch (err) {
+      addToast("Network error during AI assessment.", "error");
+    } finally {
+      setGeneratingAi(false);
     }
   };
 
@@ -188,7 +218,7 @@ export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertSt
         </button>
 
         <div className="flex items-center gap-2">
-          {onOpenReview && (
+          {onOpenReview && hasPermission('clinical_decision:create') && (
             <button
               onClick={onOpenReview}
               className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-900/30 transition-colors"
@@ -203,7 +233,7 @@ export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertSt
             className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow-md shadow-cyan-900/30 transition-colors"
           >
             <PlusCircle className="w-4 h-4" />
-            <span>{showVitalsForm ? 'Close Form' : 'Record New Vital Signs'}</span>
+            <span>{showVitalsForm ? 'Close Form' : 'Record Vital Signs'}</span>
           </button>
         </div>
       </div>
@@ -230,6 +260,7 @@ export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertSt
               
               <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-400 mt-1 font-mono">
                 <span>ID: <strong className="text-slate-200">{patient.patient_id}</strong></span>
+                <span>MRN: <strong className="text-slate-200">{patient.mrn || 'N/A'}</strong></span>
                 <span>Encounter: <strong className="text-slate-200">{encounter.encounter_id}</strong></span>
                 <span>Age: <strong className="text-slate-200">{patient.age}y</strong></span>
                 <span>Gender: <strong className="text-slate-200">{patient.gender}</strong></span>
@@ -239,9 +270,9 @@ export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertSt
             </div>
           </div>
 
-          <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800/80 max-w-sm w-full">
+          <div className="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800/80 max-w-sm w-full">
             <div className="text-[10px] uppercase font-bold text-slate-400">Chief Complaint</div>
-            <div className="text-xs font-medium text-slate-200 mt-0.5">{encounter.chief_complaint}</div>
+            <div className="text-xs font-semibold text-slate-100 mt-0.5">{encounter.chief_complaint}</div>
           </div>
         </div>
       </div>
@@ -384,7 +415,7 @@ export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertSt
         </form>
       )}
 
-      {/* Task 9 Active Clinical Alerts Section */}
+      {/* Active Clinical Alerts Section */}
       {alerts && alerts.length > 0 && (
         <div className="space-y-3">
           <div className="flex items-center gap-2">
@@ -475,7 +506,7 @@ export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertSt
       {/* 2-Column Clinical Layout */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* Left Column: Longitudinal Vitals & Observations (Span 2) */}
+        {/* Left Column: Longitudinal Vitals & Timeline (Span 2) */}
         <div className="lg:col-span-2 space-y-6">
           
           {/* Longitudinal Vital Signs Table */}
@@ -500,6 +531,7 @@ export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertSt
                     <th className="px-3 py-2.5">Temp (°C)</th>
                     <th className="px-3 py-2.5">GCS</th>
                     <th className="px-3 py-2.5">Clinician</th>
+                    <th className="px-3 py-2.5 text-right">Edit</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/60 font-mono">
@@ -513,6 +545,11 @@ export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertSt
                       <tr key={obs.id || idx} className="hover:bg-slate-800/30">
                         <td className="px-3 py-3 text-slate-400">
                           {new Date(obs.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          {obs.is_corrected && (
+                            <span className="ml-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-950 text-purple-300 border border-purple-800">
+                              CORRECTED
+                            </span>
+                          )}
                         </td>
                         
                         {/* SpO2 with delta */}
@@ -555,6 +592,17 @@ export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertSt
                         <td className="px-3 py-3 text-slate-300">{obs.temp || '-'}</td>
                         <td className="px-3 py-3 text-slate-300">{obs.gcs}</td>
                         <td className="px-3 py-3 text-slate-400 text-[11px] font-sans">{obs.recorded_by}</td>
+                        <td className="px-3 py-3 text-right">
+                          {hasPermission('vitals:update') && (
+                            <button
+                              onClick={() => setSelectedObsForCorrection(obs)}
+                              className="p-1 text-slate-400 hover:text-purple-400 hover:bg-slate-800 rounded transition-colors"
+                              title="Correct observation (with audit trail)"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </td>
                       </tr>
                     );
                   })}
@@ -600,63 +648,80 @@ export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertSt
         <div className="space-y-6">
           
           {/* Task 7 AI Risk Assessment */}
-          {ai_risk && (
-            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Sparkles className="w-5 h-5 text-cyan-400" />
-                  <h3 className="text-sm font-bold text-white">Task 7: AI Risk Assessment</h3>
-                </div>
-                <span className="text-[10px] text-slate-400 font-mono">v1.2</span>
+          <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-cyan-400" />
+                <h3 className="text-sm font-bold text-white">AI Risk Assessment (Decision Support)</h3>
               </div>
-
-              <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800 flex items-center justify-between">
-                <div>
-                  <div className="text-[10px] uppercase font-bold text-slate-400">Predicted Risk Score</div>
-                  <div className="text-2xl font-black text-cyan-300 mt-0.5">{ai_risk.risk_score}%</div>
-                </div>
-                <span className={`px-3 py-1 rounded-full text-xs font-bold ${
-                  ai_risk.risk_category === 'HIGH' ? 'bg-rose-950 text-rose-300 border border-rose-700' :
-                  ai_risk.risk_category === 'MODERATE' ? 'bg-amber-950 text-amber-300 border border-amber-700' :
-                  'bg-emerald-950 text-emerald-300 border border-emerald-700'
-                }`}>
-                  {ai_risk.risk_category} RISK
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 text-xs font-mono">
-                <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800">
-                  <div className="text-slate-400 text-[10px]">Shock Index (HR/SBP)</div>
-                  <div className={`font-bold text-sm ${ai_risk.shock_index >= 1.0 ? 'text-rose-400' : 'text-slate-200'}`}>
-                    {ai_risk.shock_index || '0.75'}
-                  </div>
-                </div>
-                <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800">
-                  <div className="text-slate-400 text-[10px]">qSOFA Score</div>
-                  <div className={`font-bold text-sm ${ai_risk.qsofa >= 2 ? 'text-rose-400' : 'text-slate-200'}`}>
-                    {ai_risk.qsofa} / 3
-                  </div>
-                </div>
-              </div>
-
-              {onOpenReview && (
-                <button
-                  onClick={onOpenReview}
-                  className="w-full py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow transition-colors flex items-center justify-center gap-1.5 mt-2"
-                >
-                  <Stethoscope className="w-3.5 h-3.5" />
-                  <span>Review & Make Clinical Decision (Task 10)</span>
-                </button>
-              )}
+              <span className="text-[10px] text-slate-400 font-mono">Risk Model v1.2</span>
             </div>
-          )}
+
+            {ai_risk ? (
+              <>
+                <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800 flex items-center justify-between">
+                  <div>
+                    <div className="text-[10px] uppercase font-bold text-slate-400">Predicted Risk Score</div>
+                    <div className="text-2xl font-black text-cyan-300 mt-0.5">{ai_risk.risk_score}%</div>
+                  </div>
+                  <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+                    ai_risk.risk_category === 'HIGH' || ai_risk.risk_category === 'CRITICAL'
+                      ? 'bg-rose-950 text-rose-300 border border-rose-700'
+                      : ai_risk.risk_category === 'MODERATE'
+                      ? 'bg-amber-950 text-amber-300 border border-amber-700'
+                      : 'bg-emerald-950 text-emerald-300 border border-emerald-700'
+                  }`}>
+                    {ai_risk.risk_category} RISK
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 text-xs font-mono">
+                  <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800">
+                    <div className="text-slate-400 text-[10px]">Predicted ESI</div>
+                    <div className="font-bold text-sm text-cyan-300">Level {ai_risk.predicted_triage_level || '2'}</div>
+                  </div>
+                  <div className="bg-slate-950/60 p-2.5 rounded-lg border border-slate-800">
+                    <div className="text-slate-400 text-[10px]">Confidence</div>
+                    <div className="font-bold text-sm text-slate-200">{ai_risk.confidence_score || '85'}%</div>
+                  </div>
+                </div>
+
+                <div className="p-2.5 rounded-xl bg-slate-950 border border-slate-800 text-[10px] text-slate-400 space-y-1">
+                  <div className="text-amber-400 font-bold">Notice: Clinical Decision Support</div>
+                  <p>AI provides advisory risk estimations. Clinical review and final decision are required.</p>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-4 space-y-3">
+                <p className="text-xs text-slate-400">No AI risk assessment has been generated yet for this encounter.</p>
+                <button
+                  onClick={handleGenerateAiAssessment}
+                  disabled={generatingAi}
+                  className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow-md shadow-cyan-900/30 transition-all disabled:opacity-50 inline-flex items-center gap-1.5"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>{generatingAi ? 'Generating AI Assessment...' : 'Generate AI Risk Assessment'}</span>
+                </button>
+              </div>
+            )}
+
+            {onOpenReview && hasPermission('clinical_decision:create') && (
+              <button
+                onClick={onOpenReview}
+                className="w-full py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow transition-colors flex items-center justify-center gap-1.5 mt-2"
+              >
+                <Stethoscope className="w-3.5 h-3.5" />
+                <span>Open Physician Review Console</span>
+              </button>
+            )}
+          </div>
 
           {/* Task 8 Explainable AI */}
           {ai_explanation && (
             <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
               <div className="flex items-center gap-2">
                 <FileText className="w-5 h-5 text-indigo-400" />
-                <h3 className="text-sm font-bold text-white">Task 8: Explainable AI Drivers</h3>
+                <h3 className="text-sm font-bold text-white">Why This Prediction? (SHAP Drivers)</h3>
               </div>
 
               <p className="text-xs text-slate-300 leading-relaxed bg-slate-950/80 p-3 rounded-xl border border-slate-800">
@@ -665,7 +730,7 @@ export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertSt
 
               {ai_explanation.top_features && (
                 <div className="space-y-2">
-                  <div className="text-[10px] uppercase font-bold text-slate-400">SHAP Feature Importance</div>
+                  <div className="text-[10px] uppercase font-bold text-slate-400">Key Feature Influence Factors</div>
                   {ai_explanation.top_features.map((feat, idx) => (
                     <div key={idx} className="flex items-center justify-between text-xs bg-slate-950/60 p-2 rounded-lg border border-slate-800">
                       <span className="font-semibold text-slate-300">{feat.feature} ({feat.value})</span>
@@ -680,6 +745,18 @@ export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertSt
         </div>
 
       </div>
+
+      {/* Observation Correction Modal */}
+      <ObservationCorrectionModal
+        isOpen={!!selectedObsForCorrection}
+        onClose={() => setSelectedObsForCorrection(null)}
+        observation={selectedObsForCorrection}
+        encounterId={encounterId}
+        onCorrectionSaved={() => {
+          setSelectedObsForCorrection(null);
+          fetchDetails();
+        }}
+      />
 
       {/* Resolution & Dismissal Clinical Dialog Modal */}
       {selectedAlertForAction && (

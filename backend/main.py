@@ -1547,6 +1547,19 @@ def get_encounter_audit_trail(
 # Staff & Role Management (Tasks 2 & 11)
 # ==========================================
 
+@app.get("/api/staff")
+def list_staff(
+    current_staff: Staff = Depends(require_permission("staff:view")),
+    db: Session = Depends(get_db)
+):
+    """
+    Lists all staff members in the current hospital tenant.
+    """
+    staff_list = db.query(Staff).filter(
+        Staff.hospital_id == current_staff.hospital_id
+    ).order_by(Staff.created_at.desc()).all()
+    return {"staff": [s.to_dict() for s in staff_list]}
+
 @app.post("/api/staff")
 def create_staff(
     req: StaffCreateRequest,

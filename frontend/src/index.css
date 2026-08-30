@@ -37,3 +37,9 @@
 .animate-pulse-subtle {
   animation: pulse-subtle 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
+
+/* 10-Second Toast Progress Countdown */
+@keyframes toast-progress {
+  0% { width: 100%; }
+  100% { width: 0%; }
+}
