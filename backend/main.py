@@ -15,7 +15,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'a
 from models import (
     Base, engine, SessionLocal, Hospital, Staff, StaffRoleEnum,
     Patient, EDEncounter, EncounterStatusEnum, ClinicalObservation,
-    TriageAssessment, AIRiskAssessment, AIExplanation,
+    TriageAssessment, AIRiskAssessment, AIExplanation, AIRiskCategoryEnum,
     ClinicalAlert, AlertStatusEnum, AlertSeverityEnum,
     AuditLog, TriageAuditLog
 )
