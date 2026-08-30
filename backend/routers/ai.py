@@ -120,9 +120,9 @@ def generate_ai_risk_assessment(
         patient_id=enc.patient_id,
         encounter_id=enc.encounter_id,
         risk_assessment_id=ai_risk.id,
-        explanation_method=exp["method"],
-        top_features=exp["top_features"],
-        summary=exp["summary"],
+        explanation_method=exp.get("explanation_method", "SHAP (LinearExplainer)"),
+        top_features=exp.get("top_features", []),
+        summary=exp.get("summary", "SHAP analysis completed."),
         generated_at=datetime.datetime.utcnow()
     )
     db.add(ai_exp)

@@ -10,6 +10,7 @@ from typing import Dict, Any, List, Optional, Tuple
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 
 from ml_pipeline.inference_engine import TriageRiskInferenceEngine
+from ml_pipeline.explainability_engine import ShapExplainabilityEngine
 from ml_pipeline.schema import (
     ALL_FEATURE_COLUMNS,
     NUMERICAL_FEATURE_COLUMNS,
@@ -25,11 +26,12 @@ class MLInferenceService:
     """
     Production-grade Clinical ML Inference & Explainability Integration Service.
     Loads candidate model artifacts, executes strict schema validation, generates
-    calibrated risk estimations, computes local feature attributions, and enforces
+    calibrated risk estimations, computes local SHAP feature attributions, and enforces
     deterministic safety nets.
     """
 
     _engine: Optional[TriageRiskInferenceEngine] = None
+    _shap_engine: Optional[ShapExplainabilityEngine] = None
     _engine_load_error: Optional[str] = None
 
     @classmethod
@@ -47,98 +49,16 @@ class MLInferenceService:
         return cls._engine
 
     @classmethod
-    def compute_local_explanations(
-        cls,
-        engine: TriageRiskInferenceEngine,
-        features: Dict[str, float]
-    ) -> Tuple[List[Dict[str, Any]], str]:
+    def get_shap_engine(cls, model_version: str = "1.0") -> ShapExplainabilityEngine:
         """
-        Computes exact local feature attributions from the trained model coefficients/weights
-        and input feature vector.
+        Singleton accessor for the SHAP explainability engine.
         """
-        model = engine.model
-        feature_cols = engine.preprocessor.feature_columns
-
-        # Friendly metadata mapping
-        feature_meta = {
-            "age": ("Age", "years"),
-            "elapsed_wait_minutes": ("Elapsed ED Wait Time", "mins"),
-            "hr": ("Heart Rate", "bpm"),
-            "sbp": ("Systolic Blood Pressure", "mmHg"),
-            "dbp": ("Diastolic Blood Pressure", "mmHg"),
-            "rr": ("Respiratory Rate", "breaths/min"),
-            "spo2": ("Oxygen Saturation (SpO2)", "%"),
-            "temp": ("Body Temperature", "°C"),
-            "gcs": ("Glasgow Coma Scale", "/15"),
-            "pain_score": ("Pain Score", "/10"),
-            "shock_index": ("Shock Index", "bpm/mmHg"),
-            "modified_shock_index": ("Modified Shock Index", ""),
-            "pulse_pressure": ("Pulse Pressure", "mmHg"),
-            "qsofa_score": ("qSOFA Score", "pts"),
-            "mews_score": ("MEWS Score", "pts"),
-            "delta_hr": ("Heart Rate Trend", "bpm"),
-            "delta_spo2": ("SpO2 Trend", "%"),
-            "velocity_spo2": ("SpO2 Desaturation Velocity", "%/min"),
-            "complaint_chest_pain": ("Chief Complaint: Chest Pain", ""),
-            "complaint_respiratory": ("Chief Complaint: Respiratory Distress", ""),
-            "complaint_infection_fever": ("Chief Complaint: Fever / Sepsis", ""),
-            "arrival_mode_ambulance": ("Arrival via Ambulance", "")
-        }
-
-        feature_contributions = []
-
-        if hasattr(model, "coef_"):
-            # Linear / Logistic Regression model: local log-odds contribution = weight * feature_val
-            coefs = model.coef_[0]
-            for idx, col_name in enumerate(feature_cols):
-                val = float(features.get(col_name, 0.0))
-                weight = float(coefs[idx])
-                contrib = round(weight * val, 3)
-
-                if abs(contrib) > 0.01:
-                    friendly_name, unit = feature_meta.get(col_name, (col_name.replace("_", " ").title(), ""))
-                    direction = "elevating risk" if contrib > 0 else "reducing risk"
-                    impact_pct = round(abs(contrib) * 10.0, 1) # Scaled impact representation
-
-                    feature_contributions.append({
-                        "feature": friendly_name,
-                        "raw_key": col_name,
-                        "value": f"{val} {unit}".strip(),
-                        "contribution": contrib,
-                        "impact": f"{'+' if contrib > 0 else '-'}{impact_pct}%",
-                        "direction": direction,
-                        "unit": unit
-                    })
-        elif hasattr(model, "feature_importances_"):
-            # Tree Ensemble: weight importance by feature value deviation
-            importances = model.feature_importances_
-            for idx, col_name in enumerate(feature_cols):
-                val = float(features.get(col_name, 0.0))
-                imp = float(importances[idx])
-                if imp > 0.01 and abs(val) > 0:
-                    friendly_name, unit = feature_meta.get(col_name, (col_name.replace("_", " ").title(), ""))
-                    feature_contributions.append({
-                        "feature": friendly_name,
-                        "raw_key": col_name,
-                        "value": f"{val} {unit}".strip(),
-                        "contribution": round(imp, 3),
-                        "impact": f"+{round(imp * 100, 1)}%",
-                        "direction": "elevating risk",
-                        "unit": unit
-                    })
-
-        # Sort by absolute impact descending and take top 5
-        feature_contributions.sort(key=lambda x: abs(x["contribution"]), reverse=True)
-        top_drivers = feature_contributions[:5]
-
-        # Construct concise clinical summary
-        driver_phrases = [f"{d['feature']} ({d['value']})" for d in top_drivers[:3] if d['direction'] == 'elevating risk']
-        if driver_phrases:
-            summary = f"Risk assessment driven predominantly by {', '.join(driver_phrases)}."
-        else:
-            summary = "Vital signs and clinical parameters currently within stable baseline tolerances."
-
-        return top_drivers, summary
+        if cls._shap_engine is None:
+            try:
+                cls._shap_engine = ShapExplainabilityEngine(model_version=model_version)
+            except Exception as e:
+                raise RuntimeError(f"Failed to load SHAP explainability engine (v{model_version}): {e}")
+        return cls._shap_engine
 
     @classmethod
     def evaluate_encounter(
@@ -152,9 +72,10 @@ class MLInferenceService:
     ) -> Dict[str, Any]:
         """
         Executes ML inference on an encounter with strict data minimization,
-        deterministic safety nets, and local explainability generation.
+        deterministic safety nets, and genuine mathematical SHAP explainability.
         """
         engine = cls.get_engine(model_version=model_version)
+        shap_engine = cls.get_shap_engine(model_version=model_version)
 
         # 1. Anonymized / Minimized Input Dictionaries
         patient_dict = {
@@ -210,20 +131,15 @@ class MLInferenceService:
             obs_index=obs_index
         )
 
-        # 3. Generate Mathematical Local Explanations
-        top_features, summary = cls.compute_local_explanations(
-            engine=engine,
-            features=inference_result["features_snapshot"]
+        # 3. Generate Genuine SHAP Local Explanations
+        shap_explanation = shap_engine.explain_prediction(
+            features_dict=inference_result["features_snapshot"],
+            risk_probability=inference_result.get("risk_probability", 0.5),
+            safety_net_triggered=inference_result.get("safety_net_triggered", False),
+            safety_triggers=inference_result.get("safety_triggers")
         )
-
-        if inference_result.get("safety_net_triggered"):
-            summary = f"CRITICAL SAFETY INTERLOCK: {', '.join(inference_result.get('safety_triggers', []))} triggered immediate resuscitation escalation."
 
         return {
             "inference": inference_result,
-            "explanations": {
-                "top_features": top_features,
-                "summary": summary,
-                "method": "Local Linear Log-Odds Attribution / SHAP"
-            }
+            "explanations": shap_explanation
         }
