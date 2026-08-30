@@ -26,6 +26,11 @@ from services.rbac import (
 from services.deterioration_detector import DeteriorationDetector
 from services.alert_service import AlertService
 from services.background_monitor import BackgroundMonitorService
+from services.dashboard_service import (
+    get_dashboard_analytics,
+    get_dashboard_drilldown,
+    get_dashboard_summary,
+)
 from triage_engine import TriageEngine
 
 # Initialize database schema
@@ -463,6 +468,79 @@ def check_encounter_deterioration(
     }
 
 # ==========================================
+# Task 12: ED Dashboard + Hospital Analytics
+# ==========================================
+
+@app.get("/api/dashboard/summary")
+def get_ed_dashboard_summary(
+    staff: Staff = Depends(require_permission("dashboard:view")),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns aggregate ED operational metrics for the authenticated staff member's hospital.
+
+    Required permission: dashboard:view.
+    Hospital isolation: enforced server-side from the authenticated staff record.
+    Privacy: aggregate response only; no patient names, contact details, histories, or vitals.
+    """
+    return get_dashboard_summary(db=db, staff=staff)
+
+
+@app.get("/api/dashboard/analytics")
+def get_ed_dashboard_analytics(
+    range_key: str = Query("today", alias="range"),
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    staff: Staff = Depends(require_permission("dashboard:view")),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns ED volume, wait-time, risk distribution, alert, and AI usage analytics.
+
+    Required permission: dashboard:view.
+    Request parameters: range=today|last_7_days|last_30_days|custom, plus start_date/end_date for custom.
+    Hospital isolation: all aggregates are filtered by the authenticated staff hospital.
+    """
+    try:
+        return get_dashboard_analytics(
+            db=db,
+            staff=staff,
+            range_key=range_key,
+            start_date=start_date,
+            end_date=end_date,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.get("/api/dashboard/drilldown/{metric}")
+def get_ed_dashboard_drilldown(
+    metric: str,
+    staff: Staff = Depends(require_permission("dashboard:view")),
+    db: Session = Depends(get_db)
+):
+    """
+    Returns minimal encounter identifiers behind a dashboard metric.
+
+    Required permission: dashboard:view.
+    Detailed patient chart access remains protected by the existing /api/encounters/{encounter_id} endpoint.
+    Privacy: hospital administrators receive encounter-level rows without patient identifiers.
+    """
+    allowed_metrics = {
+        "active_encounters",
+        "waiting_for_triage",
+        "triage_in_progress",
+        "waiting_for_physician",
+        "under_evaluation",
+        "high_risk_encounters",
+        "active_alerts",
+    }
+    if metric not in allowed_metrics:
+        raise HTTPException(status_code=400, detail="Unsupported dashboard drill-down metric.")
+    return get_dashboard_drilldown(db=db, staff=staff, metric=metric)
+
+
+# ==========================================
 # Task 9: Clinical Alerts Management
 # ==========================================
 
@@ -630,6 +708,7 @@ def seed_demo_data(db: Session = Depends(get_db)):
     # 2. Staff
     demo_staff = [
         {"staff_id": "ADMIN001", "name": "Sarah Connor, MHA", "email": "admin@demohospital.org", "role": StaffRoleEnum.HOSPITAL_ADMIN, "hosp": "DEMO001"},
+        {"staff_id": "DIR001", "name": "Dr. Miranda Bailey, MD", "email": "director@demohospital.org", "role": StaffRoleEnum.CLINICAL_DIRECTOR, "hosp": "DEMO001"},
         {"staff_id": "DOC001", "name": "Dr. Gregory House, MD", "email": "doc001@demohospital.org", "role": StaffRoleEnum.EMERGENCY_PHYSICIAN, "hosp": "DEMO001"},
         {"staff_id": "NUR001", "name": "Nurse Jackie Peyton, RN", "email": "nur001@demohospital.org", "role": StaffRoleEnum.TRIAGE_NURSE, "hosp": "DEMO001"},
         {"staff_id": "TECH001", "name": "John Carter, EMT-P", "email": "tech001@demohospital.org", "role": StaffRoleEnum.EMERGENCY_TECHNICIAN, "hosp": "DEMO001"},
@@ -855,6 +934,120 @@ def seed_demo_data(db: Session = Depends(get_db)):
             AlertService.create_or_update_alert(
                 db=db, hospital_id="DEMO001", patient_id="PT-DEMO-003", encounter_id="ENC-DEMO-003", detection_result=det_result3
             )
+
+    # Task 12: synthetic historical ED activity for real analytics charts.
+    demo_statuses = [
+        EncounterStatusEnum.DISCHARGED,
+        EncounterStatusEnum.TRANSFERRED,
+        EncounterStatusEnum.ADMITTED,
+        EncounterStatusEnum.DISCHARGED,
+        EncounterStatusEnum.DISCHARGED,
+        EncounterStatusEnum.IN_TRIAGE,
+        EncounterStatusEnum.IN_TREATMENT,
+        EncounterStatusEnum.WAITING,
+    ]
+    risk_categories = [
+        AIRiskCategoryEnum.LOW,
+        AIRiskCategoryEnum.MODERATE,
+        AIRiskCategoryEnum.HIGH,
+        AIRiskCategoryEnum.LOW,
+        AIRiskCategoryEnum.CRITICAL,
+        AIRiskCategoryEnum.MODERATE,
+        AIRiskCategoryEnum.HIGH,
+        AIRiskCategoryEnum.LOW,
+    ]
+    now = datetime.datetime.utcnow()
+    for idx, enc_status in enumerate(demo_statuses, start=4):
+        patient_id = f"PT-DEMO-{idx:03d}"
+        encounter_id = f"ENC-DEMO-{idx:03d}"
+        existing_enc = db.query(EDEncounter).filter(EDEncounter.encounter_id == encounter_id).first()
+        if existing_enc:
+            continue
+
+        arrival_time = now - datetime.timedelta(days=idx % 7, hours=idx, minutes=idx * 3)
+        patient = Patient(
+            hospital_id="DEMO001",
+            patient_id=patient_id,
+            mrn=f"MRN-88{idx:03d}",
+            first_name=f"Demo{idx}",
+            last_name="Patient",
+            age=float(28 + idx * 4),
+            gender="Female" if idx % 2 else "Male",
+            arrival_mode="Ambulance" if idx % 3 == 0 else "Walk-in",
+            created_by="NUR001",
+            created_at=arrival_time,
+        )
+        db.add(patient)
+        db.commit()
+
+        encounter = EDEncounter(
+            hospital_id="DEMO001",
+            patient_id=patient_id,
+            encounter_id=encounter_id,
+            arrival_time=arrival_time,
+            arrival_mode=patient.arrival_mode,
+            chief_complaint=[
+                "Chest discomfort",
+                "Abdominal pain",
+                "Migraine with vomiting",
+                "Shortness of breath",
+            ][idx % 4],
+            status=enc_status,
+            assigned_nurse_id="NUR001",
+            assigned_doctor_id="DOC001" if enc_status in [EncounterStatusEnum.IN_TREATMENT, EncounterStatusEnum.ADMITTED, EncounterStatusEnum.DISCHARGED] else None,
+            bed_number=f"Bed-{idx:02d}" if enc_status != EncounterStatusEnum.WAITING else "ED-Wait",
+        )
+        db.add(encounter)
+        db.commit()
+
+        if enc_status != EncounterStatusEnum.WAITING or idx % 2 == 0:
+            triage_level = 2 if risk_categories[idx - 4] in [AIRiskCategoryEnum.HIGH, AIRiskCategoryEnum.CRITICAL] else 3
+            triage = TriageAssessment(
+                hospital_id="DEMO001",
+                patient_id=patient_id,
+                encounter_id=encounter_id,
+                triage_level=triage_level,
+                acuity_category="Emergent" if triage_level == 2 else "Urgent",
+                chief_complaint=encounter.chief_complaint,
+                pain_score=min(10, 2 + idx),
+                mobility="Ambulatory",
+                assessed_by="NUR001",
+                assessed_at=arrival_time + datetime.timedelta(minutes=6 + idx),
+                notes="Synthetic Task 12 analytics encounter.",
+            )
+            db.add(triage)
+
+        obs = ClinicalObservation(
+            hospital_id="DEMO001",
+            patient_id=patient_id,
+            encounter_id=encounter_id,
+            timestamp=arrival_time + datetime.timedelta(minutes=10 + idx),
+            hr=82 + idx * 3,
+            sbp=128 - idx,
+            dbp=78,
+            rr=16 + (idx % 4),
+            spo2=98 - (idx % 5),
+            temp=36.8 + (idx % 3) * 0.2,
+            gcs=15,
+            pain_score=min(10, 2 + idx),
+            recorded_by="NUR001",
+        )
+        db.add(obs)
+        db.commit()
+
+        risk = AIRiskAssessment(
+            hospital_id="DEMO001",
+            patient_id=patient_id,
+            encounter_id=encounter_id,
+            observation_id=obs.id,
+            risk_score=25.0 + idx * 6,
+            risk_category=risk_categories[idx - 4],
+            predicted_triage_level=2 if risk_categories[idx - 4] in [AIRiskCategoryEnum.HIGH, AIRiskCategoryEnum.CRITICAL] else 3,
+            confidence_score=70.0 + idx,
+            assessed_at=arrival_time + datetime.timedelta(minutes=15 + idx),
+        )
+        db.add(risk)
+        db.commit()
 
     return {
         "status": "success",

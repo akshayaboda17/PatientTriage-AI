@@ -1,6 +1,6 @@
 import React from 'react';
 import { useAuth, DEMO_USERS } from '../context/AuthContext';
-import { Activity, Bell, Users, ShieldAlert, FileText, Building2, RefreshCw, AlertCircle } from 'lucide-react';
+import { Activity, BarChart3, Users, ShieldAlert, FileText, Building2, RefreshCw } from 'lucide-react';
 
 export const Navbar = ({ activeTab, setActiveTab, unacknowledgedAlertCount = 0, onRefresh }) => {
   const { currentStaff, switchStaff, switchHospital, hospitals, addToast, authHeaders } = useAuth();
@@ -44,6 +44,18 @@ export const Navbar = ({ activeTab, setActiveTab, unacknowledgedAlertCount = 0, 
 
           {/* Navigation Tabs */}
           <nav className="flex items-center gap-1 bg-slate-950/60 p-1 rounded-xl border border-slate-800">
+            <button
+              onClick={() => setActiveTab('dashboard')}
+              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                activeTab === 'dashboard'
+                  ? 'bg-cyan-600 text-white shadow-sm'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+              }`}
+            >
+              <BarChart3 className="w-4 h-4" />
+              <span>ED Dashboard</span>
+            </button>
+
             <button
               onClick={() => setActiveTab('queue')}
               className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-medium transition-all ${

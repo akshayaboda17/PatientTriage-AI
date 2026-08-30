@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Navbar } from './components/Navbar';
 import { NotificationToast } from './components/NotificationToast';
+import { EDOperationsDashboard } from './components/EDOperationsDashboard';
 import { EDQueueView } from './components/EDQueueView';
 import { AlertsDashboard } from './components/AlertsDashboard';
 import { PatientDetailView } from './components/PatientDetailView';
@@ -9,7 +10,7 @@ import { AuditLogView } from './components/AuditLogView';
 
 const MainAppContent = () => {
   const { authHeaders } = useAuth();
-  const [activeTab, setActiveTab] = useState('queue'); // 'queue', 'alerts', 'audit', 'patient-detail'
+  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard', 'queue', 'alerts', 'audit', 'patient-detail'
   const [selectedEncounterId, setSelectedEncounterId] = useState(null);
   const [unacknowledgedCount, setUnacknowledgedCount] = useState(0);
 
@@ -61,6 +62,12 @@ const MainAppContent = () => {
           <EDQueueView
             onSelectPatient={handleSelectPatient}
             onAlertStateChanged={handleAlertStateChanged}
+          />
+        )}
+
+        {activeTab === 'dashboard' && (
+          <EDOperationsDashboard
+            onSelectPatient={handleSelectPatient}
           />
         )}
 

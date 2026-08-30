@@ -11,7 +11,7 @@ ROLE_PERMISSIONS: dict[StaffRoleEnum, Set[str]] = {
     StaffRoleEnum.HOSPITAL_ADMIN: {
         "hospital:view", "hospital:update",
         "staff:view", "staff:create", "staff:update", "staff:deactivate",
-        "audit:view", "patient:view"
+        "audit:view", "patient:view", "dashboard:view"
     },
     StaffRoleEnum.CLINICAL_DIRECTOR: {
         "hospital:view", "staff:view", "audit:view",
@@ -19,7 +19,8 @@ ROLE_PERMISSIONS: dict[StaffRoleEnum, Set[str]] = {
         "triage:view", "triage:create", "triage:update",
         "vitals:view", "vitals:create", "vitals:update",
         "ai:view", "ai:override",
-        "alert:view", "alert:acknowledge", "alert:resolve", "alert:dismiss"
+        "alert:view", "alert:acknowledge", "alert:resolve", "alert:dismiss",
+        "dashboard:view"
     },
     StaffRoleEnum.EMERGENCY_PHYSICIAN: {
         "patient:view", "patient:create", "patient:update",
@@ -27,21 +28,23 @@ ROLE_PERMISSIONS: dict[StaffRoleEnum, Set[str]] = {
         "vitals:view", "vitals:create", "vitals:update",
         "ai:view", "ai:override",
         "alert:view", "alert:acknowledge", "alert:resolve", "alert:dismiss",
-        "audit:view"
+        "audit:view", "dashboard:view"
     },
     StaffRoleEnum.TRIAGE_NURSE: {
         "patient:view", "patient:create", "patient:update",
         "triage:view", "triage:create", "triage:update",
         "vitals:view", "vitals:create", "vitals:update",
         "ai:view",
-        "alert:view", "alert:acknowledge", "alert:resolve"
+        "alert:view", "alert:acknowledge", "alert:resolve",
+        "dashboard:view"
     },
     StaffRoleEnum.STAFF_NURSE: {
         "patient:view", "patient:update",
         "triage:view",
         "vitals:view", "vitals:create", "vitals:update",
         "ai:view",
-        "alert:view", "alert:acknowledge"
+        "alert:view", "alert:acknowledge",
+        "dashboard:view"
     },
     StaffRoleEnum.EMERGENCY_TECHNICIAN: {
         "patient:view",
@@ -77,10 +80,10 @@ def get_current_staff(
         # Token format in demo: "TOKEN_{staff_id}_{hospital_id}" or JSON
         token = auth.credentials.strip()
         if token.startswith("TOKEN_"):
-            parts = token.split("_")
-            if len(parts) >= 3:
-                staff_id = parts[1]
-                hospital_id = parts[2]
+            token_body = token.replace("TOKEN_", "", 1)
+            parts = token_body.rsplit("_", 1)
+            if len(parts) == 2:
+                staff_id, hospital_id = parts
         else:
             staff_id = token
 
