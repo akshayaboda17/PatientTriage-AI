@@ -9,6 +9,7 @@ from main import app, get_db
 import test_deterioration
 import test_physician_review
 import test_audit
+import test_security
 
 def run_all_tests():
     # 1. Run Task 9 tests with Task 9 db override
@@ -106,7 +107,35 @@ def run_all_tests():
             print(f" [FAIL] {doc.strip()}: {err.splitlines()[-1]}")
             failed += 1
 
-    total = len(task9_tests) + suite10.countTestCases() + suite11.countTestCases()
+    print("\n" + "=" * 65)
+    print("RUNNING PATIENTTRIAGE.AI TASK 13 (SECURITY & PRIVACY HARDENING) SUITE")
+    print("=" * 65)
+
+    app.dependency_overrides[get_db] = test_security.override_get_db
+
+    suite13 = unittest.TestLoader().loadTestsFromTestCase(test_security.TestSecurityAndPrivacyHardening)
+
+    test_security.test_engine.dispose()
+    if os.path.exists(test_security.TEST_DB_PATH):
+        try:
+            os.remove(test_security.TEST_DB_PATH)
+        except Exception:
+            pass
+    test_security.Base.metadata.create_all(bind=test_security.test_engine)
+
+    for test_case in suite13:
+        result = unittest.TestResult()
+        test_case(result)
+        doc = test_case._testMethodDoc or test_case._testMethodName
+        if result.wasSuccessful():
+            print(f" [PASS] {doc.strip()}")
+            passed += 1
+        else:
+            err = result.failures[0][1] if result.failures else result.errors[0][1]
+            print(f" [FAIL] {doc.strip()}: {err.splitlines()[-1]}")
+            failed += 1
+
+    total = len(task9_tests) + suite10.countTestCases() + suite11.countTestCases() + suite13.countTestCases()
     print("\n" + "=" * 65)
     print(f"COMBINED VERIFICATION SUMMARY: {passed} PASSED, {failed} FAILED (TOTAL {total})")
     print("=" * 65)

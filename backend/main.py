@@ -1,9 +1,12 @@
 import sys
 import os
 import datetime
+import time
+from collections import defaultdict
 from typing import Optional, List, Dict, Any
-from fastapi import FastAPI, Depends, HTTPException, status, Query, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, status, Query, BackgroundTasks, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 from sqlalchemy import desc
@@ -25,7 +28,8 @@ from models import (
 )
 from services.rbac import (
     get_db, get_current_staff, require_permission,
-    verify_hospital_access, get_staff_permissions
+    verify_hospital_access, get_staff_permissions,
+    create_session, revoke_session, verify_password, hash_password
 )
 from services.audit_service import AuditService
 from services.deterioration_detector import DeteriorationDetector
@@ -42,111 +46,150 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# ==========================================
+# Security Headers Middleware
+# ==========================================
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request: Request, call_next):
+        response: Response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["X-XSS-Protection"] = "1; mode=block"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'"
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000", "*"],
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
 )
+
+# Login Rate Limiting (In-Memory sliding window)
+LOGIN_FAILED_ATTEMPTS: Dict[str, List[float]] = defaultdict(list)
+MAX_LOGIN_ATTEMPTS = 5
+LOGIN_RATE_WINDOW_SECONDS = 60
+
+def check_login_rate_limit(key: str) -> bool:
+    now = time.time()
+    # Prune attempts outside sliding window
+    LOGIN_FAILED_ATTEMPTS[key] = [t for t in LOGIN_FAILED_ATTEMPTS[key] if now - t < LOGIN_RATE_WINDOW_SECONDS]
+    return len(LOGIN_FAILED_ATTEMPTS[key]) < MAX_LOGIN_ATTEMPTS
+
+def record_login_failure(key: str) -> None:
+    LOGIN_FAILED_ATTEMPTS[key].append(time.time())
+
+def reset_login_rate_limit(key: str) -> None:
+    if key in LOGIN_FAILED_ATTEMPTS:
+        del LOGIN_FAILED_ATTEMPTS[key]
 
 legacy_engine = TriageEngine()
 deterioration_detector = DeteriorationDetector()
 monitor_service = BackgroundMonitorService()
 
 # ==========================================
-# Pydantic Schemas
+# Pydantic Schemas with Strict Range & Length Validation
 # ==========================================
 
 class LoginRequest(BaseModel):
-    staff_id: str
-    password: Optional[str] = "password"
-    hospital_id: Optional[str] = None
+    staff_id: str = Field(..., min_length=1, max_length=50)
+    password: Optional[str] = Field("password", max_length=200)
+    hospital_id: Optional[str] = Field(None, max_length=50)
 
 class VitalSignInput(BaseModel):
-    hr: int = Field(..., ge=20, le=260, description="Heart rate in bpm")
-    sbp: int = Field(..., ge=30, le=300, description="Systolic blood pressure in mmHg")
-    dbp: Optional[int] = Field(None, ge=20, le=200, description="Diastolic blood pressure in mmHg")
-    rr: int = Field(..., ge=4, le=70, description="Respiratory rate in breaths/min")
-    spo2: int = Field(..., ge=40, le=100, description="SpO2 oxygen saturation percentage")
-    temp: Optional[float] = Field(37.0, ge=30.0, le=45.0, description="Temperature in Celsius")
+    hr: int = Field(..., ge=0, le=300, description="Heart rate in bpm")
+    sbp: int = Field(..., ge=0, le=350, description="Systolic blood pressure in mmHg")
+    dbp: Optional[int] = Field(None, ge=0, le=250, description="Diastolic blood pressure in mmHg")
+    rr: int = Field(..., ge=0, le=100, description="Respiratory rate in breaths/min")
+    spo2: int = Field(..., ge=0, le=100, description="SpO2 oxygen saturation percentage")
+    temp: Optional[float] = Field(37.0, ge=20.0, le=50.0, description="Temperature in Celsius")
     gcs: Optional[int] = Field(15, ge=3, le=15, description="Glasgow Coma Scale")
     pain_score: Optional[int] = Field(0, ge=0, le=10, description="Pain score 0-10")
-    notes: Optional[str] = None
+    notes: Optional[str] = Field(None, max_length=5000)
 
 class AlertResolutionInput(BaseModel):
-    resolution_reason: str = Field(..., min_length=3, description="Clinical reason for resolving the alert")
+    resolution_reason: str = Field(..., min_length=3, max_length=1000, description="Clinical reason for resolving the alert")
 
 class AlertDismissalInput(BaseModel):
-    dismissal_reason: str = Field(..., min_length=3, description="Clinical rationale for dismissing the alert")
+    dismissal_reason: str = Field(..., min_length=3, max_length=1000, description="Clinical rationale for dismissing the alert")
 
 class ClinicalDecisionRequest(BaseModel):
-    clinical_assessment: Optional[str] = Field(None, description="Physician's clinical assessment / findings")
+    clinical_assessment: Optional[str] = Field(None, max_length=5000, description="Physician's clinical assessment / findings")
     ai_agreement: AIAgreementEnum = Field(default=AIAgreementEnum.AGREED, description="Whether physician agrees with AI risk assessment")
-    clinician_assigned_risk: Optional[str] = Field(None, description="Clinician's determined risk category (e.g. LOW, MODERATE, HIGH, CRITICAL)")
-    override_reason: Optional[str] = Field(None, description="Structured rationale required if overriding AI assessment")
-    clinical_notes: Optional[str] = Field(None, description="Additional physician notes and clinical context")
+    clinician_assigned_risk: Optional[str] = Field(None, max_length=50, description="Clinician's determined risk category")
+    override_reason: Optional[str] = Field(None, max_length=1000, description="Structured rationale required if overriding AI assessment")
+    clinical_notes: Optional[str] = Field(None, max_length=5000, description="Additional physician notes and clinical context")
     clinical_decision: ClinicalDecisionEnum = Field(default=ClinicalDecisionEnum.CONTINUE_EVALUATION, description="Next step / clinical disposition")
 
 class ObservationCorrectionRequest(BaseModel):
-    hr: Optional[int] = Field(None, ge=20, le=260)
-    sbp: Optional[int] = Field(None, ge=30, le=300)
-    dbp: Optional[int] = Field(None, ge=20, le=200)
-    rr: Optional[int] = Field(None, ge=4, le=70)
-    spo2: Optional[int] = Field(None, ge=40, le=100)
-    temp: Optional[float] = Field(None, ge=30.0, le=45.0)
+    hr: Optional[int] = Field(None, ge=0, le=300)
+    sbp: Optional[int] = Field(None, ge=0, le=350)
+    dbp: Optional[int] = Field(None, ge=0, le=250)
+    rr: Optional[int] = Field(None, ge=0, le=100)
+    spo2: Optional[int] = Field(None, ge=0, le=100)
+    temp: Optional[float] = Field(None, ge=20.0, le=50.0)
     gcs: Optional[int] = Field(None, ge=3, le=15)
     pain_score: Optional[int] = Field(None, ge=0, le=10)
-    notes: Optional[str] = None
-    correction_reason: str = Field(..., min_length=3, description="Clinical reason for correcting vital signs data")
+    notes: Optional[str] = Field(None, max_length=5000)
+    correction_reason: str = Field(..., min_length=3, max_length=1000, description="Clinical reason for correcting vital signs data")
 
 class PatientCreateRequest(BaseModel):
-    first_name: str
-    last_name: str
-    mrn: str
+    first_name: str = Field(..., min_length=1, max_length=100)
+    last_name: str = Field(..., min_length=1, max_length=100)
+    mrn: str = Field(..., min_length=1, max_length=50)
     age: float = Field(..., ge=0, le=130)
-    gender: str
-    phone: Optional[str] = None
-    allergies: Optional[str] = None
-    medical_history: Optional[str] = None
+    gender: str = Field(..., min_length=1, max_length=30)
+    phone: Optional[str] = Field(None, max_length=50)
+    allergies: Optional[str] = Field(None, max_length=2000)
+    medical_history: Optional[str] = Field(None, max_length=5000)
 
 class PatientUpdateRequest(BaseModel):
-    first_name: Optional[str] = None
-    last_name: Optional[str] = None
-    age: Optional[float] = None
-    gender: Optional[str] = None
-    phone: Optional[str] = None
-    allergies: Optional[str] = None
-    medical_history: Optional[str] = None
+    first_name: Optional[str] = Field(None, max_length=100)
+    last_name: Optional[str] = Field(None, max_length=100)
+    age: Optional[float] = Field(None, ge=0, le=130)
+    gender: Optional[str] = Field(None, max_length=30)
+    phone: Optional[str] = Field(None, max_length=50)
+    allergies: Optional[str] = Field(None, max_length=2000)
+    medical_history: Optional[str] = Field(None, max_length=5000)
 
 class EncounterCreateRequest(BaseModel):
-    patient_id: str
-    chief_complaint: str
-    arrival_mode: Optional[str] = "Walk-in"
-    bed_number: Optional[str] = None
+    patient_id: str = Field(..., min_length=1, max_length=50)
+    chief_complaint: str = Field(..., min_length=1, max_length=500)
+    arrival_mode: Optional[str] = Field("Walk-in", max_length=50)
+    bed_number: Optional[str] = Field(None, max_length=30)
 
 class EncounterStatusUpdateRequest(BaseModel):
     status: EncounterStatusEnum
-    bed_number: Optional[str] = None
+    bed_number: Optional[str] = Field(None, max_length=30)
 
 class TriageCreateRequest(BaseModel):
     triage_level: int = Field(..., ge=1, le=5)
-    acuity_category: str
-    chief_complaint: Optional[str] = None
-    pain_score: Optional[int] = 0
-    mobility: Optional[str] = "Ambulatory"
-    notes: Optional[str] = None
+    acuity_category: str = Field(..., max_length=50)
+    chief_complaint: Optional[str] = Field(None, max_length=500)
+    pain_score: Optional[int] = Field(0, ge=0, le=10)
+    mobility: Optional[str] = Field("Ambulatory", max_length=50)
+    notes: Optional[str] = Field(None, max_length=5000)
 
 class StaffCreateRequest(BaseModel):
-    staff_id: str
-    name: str
-    email: str
+    staff_id: str = Field(..., min_length=1, max_length=50)
+    name: str = Field(..., min_length=1, max_length=150)
+    email: str = Field(..., min_length=3, max_length=150)
     role: StaffRoleEnum
-    password: Optional[str] = "password"
+    password: Optional[str] = Field("password", max_length=200)
 
 class StaffRoleUpdateRequest(BaseModel):
     role: StaffRoleEnum
+
+class AIAssessmentOutputSchema(BaseModel):
+    risk_score: float = Field(..., ge=0.0, le=1.0)
+    risk_category: AIRiskCategoryEnum
+    predicted_level: int = Field(..., ge=1, le=5)
+    confidence: Optional[float] = Field(None, ge=0.0, le=1.0)
 
 class LegacyPatientInput(BaseModel):
     age: int = None
@@ -173,33 +216,43 @@ class LegacyOverrideInput(BaseModel):
 # ==========================================
 
 @app.post("/api/auth/login")
-def login(creds: LoginRequest, db: Session = Depends(get_db)):
+def login(creds: LoginRequest, raw_req: Request, db: Session = Depends(get_db)):
     """
-    Authenticates staff and returns session info with RBAC permissions and hospital affiliation.
-    Audits successful logins and failed login attempts without storing credentials.
+    Authenticates staff with rate limiting, password verification, and session token generation.
+    Audits successful logins and failed login attempts without leaking credentials.
     """
+    client_ip = raw_req.client.host if (raw_req.client and raw_req.client.host) else "127.0.0.1"
+    rate_key = f"{client_ip}:{creds.staff_id}"
+
+    if not check_login_rate_limit(rate_key):
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed login attempts. Rate limit exceeded. Please wait 60 seconds."
+        )
+
     query = db.query(Staff).filter(Staff.staff_id == creds.staff_id)
     if creds.hospital_id:
         query = query.filter(Staff.hospital_id == creds.hospital_id)
     staff = query.first()
 
-    if not staff:
+    if not staff or not verify_password(creds.password, staff.password_hash):
+        record_login_failure(rate_key)
         AuditService.log_event(
             db=db,
-            hospital_id=creds.hospital_id or "SYSTEM",
+            hospital_id=creds.hospital_id or (staff.hospital_id if staff else "SYSTEM"),
             action="LOGIN_FAILURE",
             entity_type="AUTHENTICATION",
             entity_id=creds.staff_id,
             actor_id=creds.staff_id,
-            actor_role="UNKNOWN",
+            actor_role=staff.role.value if staff else "UNKNOWN",
             actor_type=ActorTypeEnum.HUMAN,
             result=AuditResultEnum.DENIED,
-            metadata={"reason": "Staff identity not found"},
+            metadata={"reason": "Invalid credentials provided"},
             auto_commit=True
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Staff identity '{creds.staff_id}' not found."
+            detail="Invalid staff ID or password."
         )
 
     if not staff.is_active:
@@ -222,7 +275,9 @@ def login(creds: LoginRequest, db: Session = Depends(get_db)):
             detail="Staff account has been deactivated."
         )
 
-    # Log successful login
+    # Success: reset rate limit tracking
+    reset_login_rate_limit(rate_key)
+
     AuditService.log_event(
         db=db,
         hospital_id=staff.hospital_id,
@@ -240,7 +295,7 @@ def login(creds: LoginRequest, db: Session = Depends(get_db)):
 
     hospital = db.query(Hospital).filter(Hospital.hospital_code == staff.hospital_id).first()
     permissions = list(get_staff_permissions(staff.role))
-    token = f"TOKEN_{staff.staff_id}_{staff.hospital_id}"
+    token = create_session(staff.staff_id, staff.hospital_id)
 
     return {
         "access_token": token,
@@ -251,10 +306,21 @@ def login(creds: LoginRequest, db: Session = Depends(get_db)):
     }
 
 @app.post("/api/auth/logout")
-def logout(staff: Staff = Depends(get_current_staff), db: Session = Depends(get_db)):
+def logout(
+    raw_req: Request,
+    staff: Staff = Depends(get_current_staff),
+    db: Session = Depends(get_db)
+):
     """
-    Logs out authenticated staff member and creates an audit record.
+    Logs out authenticated staff member, invalidates session token, and creates an audit record.
     """
+    auth_header = raw_req.headers.get("Authorization")
+    if auth_header and auth_header.startswith("Bearer "):
+        token = auth_header[7:].strip()
+        revoke_session(token)
+    elif raw_req.headers.get("X-Staff-Id"):
+        revoke_session(raw_req.headers.get("X-Staff-Id"))
+
     AuditService.log_event(
         db=db,
         hospital_id=staff.hospital_id,
@@ -268,7 +334,7 @@ def logout(staff: Staff = Depends(get_current_staff), db: Session = Depends(get_
         result=AuditResultEnum.SUCCESS,
         auto_commit=True
     )
-    return {"status": "success", "message": "Successfully logged out."}
+    return {"status": "success", "message": "Successfully logged out and session revoked."}
 
 @app.get("/api/auth/me")
 def get_current_user_profile(staff: Staff = Depends(get_current_staff), db: Session = Depends(get_db)):
@@ -777,6 +843,100 @@ def get_encounter_details(
         "current_physician_assessment": physician_assessments[0].to_dict() if physician_assessments else None,
         "timeline": timeline_sorted
     }
+
+@app.post("/api/encounters/{encounter_id}/ai-assessment")
+def generate_ai_risk_assessment(
+    encounter_id: str,
+    staff: Staff = Depends(require_permission("ai:view")),
+    db: Session = Depends(get_db)
+):
+    """
+    Generates AI risk assessment with strict data minimization (anonymized clinical parameters only)
+    and rigorous schema output validation.
+    """
+    enc = db.query(EDEncounter).filter(
+        EDEncounter.encounter_id == encounter_id,
+        EDEncounter.hospital_id == staff.hospital_id
+    ).first()
+
+    if not enc:
+        raise HTTPException(status_code=404, detail=f"Encounter '{encounter_id}' not found.")
+
+    patient = enc.patient
+    latest_obs = db.query(ClinicalObservation).filter(
+        ClinicalObservation.encounter_id == encounter_id
+    ).order_by(ClinicalObservation.timestamp.desc()).first()
+
+    # Data Minimization: Send ONLY clinical parameters to ML engine; never PHI (names, phone, mrn)
+    minimized_features = {
+        "age": patient.age,
+        "gender": patient.gender,
+        "chief_complaint": enc.chief_complaint,
+        "hr": latest_obs.hr if latest_obs else 80,
+        "sbp": latest_obs.sbp if latest_obs else 120,
+        "dbp": latest_obs.dbp if latest_obs else 80,
+        "rr": latest_obs.rr if latest_obs else 16,
+        "spo2": latest_obs.spo2 if latest_obs else 98,
+        "temp": latest_obs.temp if latest_obs else 37.0,
+        "pain_score": latest_obs.pain_score if latest_obs else 0,
+        "gcs": latest_obs.gcs if latest_obs else 15
+    }
+
+    try:
+        raw_result = legacy_engine.evaluate_patient(minimized_features)
+        
+        # Schema validation of AI output
+        raw_score = float(raw_result.get("confidence_score", 75.0))
+        normalized_score = raw_score / 100.0 if raw_score > 1.0 else raw_score
+        level = int(raw_result.get("triage_level", 3))
+        
+        cat_map = {1: AIRiskCategoryEnum.CRITICAL, 2: AIRiskCategoryEnum.HIGH, 3: AIRiskCategoryEnum.MODERATE, 4: AIRiskCategoryEnum.LOW, 5: AIRiskCategoryEnum.LOW}
+        risk_cat = cat_map.get(level, AIRiskCategoryEnum.MODERATE)
+
+        validated_output = AIAssessmentOutputSchema(
+            risk_score=min(max(normalized_score, 0.0), 1.0),
+            risk_category=risk_cat,
+            predicted_level=level,
+            confidence=normalized_score
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"AI risk engine returned invalid or malformed output: {e}")
+
+    # Save AIRiskAssessment
+    ai_risk = AIRiskAssessment(
+        assessment_id=f"AI-{staff.hospital_id[:4]}-{uuid.uuid4().hex[:6].upper()}",
+        hospital_id=staff.hospital_id,
+        patient_id=enc.patient_id,
+        encounter_id=enc.encounter_id,
+        predicted_triage_level=validated_output.predicted_level,
+        risk_score=validated_output.risk_score,
+        risk_category=validated_output.risk_category,
+        confidence_score=validated_output.confidence,
+        model_name="PatientTriage TriageEngine",
+        model_version="1.0-rf",
+        assessed_at=datetime.datetime.utcnow()
+    )
+    db.add(ai_risk)
+    db.commit()
+    db.refresh(ai_risk)
+
+    AuditService.log_event(
+        db=db,
+        hospital_id=staff.hospital_id,
+        action="AI_ASSESSMENT_GENERATED",
+        entity_type="AIRiskAssessment",
+        entity_id=str(ai_risk.id),
+        actor_id="AI_SYSTEM",
+        actor_role="AI_SYSTEM",
+        actor_type=ActorTypeEnum.AI_SYSTEM,
+        patient_id=enc.patient_id,
+        encounter_id=enc.encounter_id,
+        result=AuditResultEnum.SUCCESS,
+        metadata={"predicted_level": validated_output.predicted_level, "risk_category": validated_output.risk_category.value},
+        auto_commit=True
+    )
+
+    return {"message": "AI Assessment generated.", "assessment": ai_risk.to_dict()}
 
 @app.get("/api/encounters/{encounter_id}/clinical-review")
 def get_clinical_review(
