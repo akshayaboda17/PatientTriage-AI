@@ -262,6 +262,41 @@ def seed_demo_data(db: Session = Depends(get_db)):
                 db=db, hospital_id="DEMO001", patient_id="PT-DEMO-003", encounter_id="ENC-DEMO-003", detection_result=det_result3
             )
 
+    # Seed MLOps Model Registry with Production Model v1.0 if empty
+    from models import MLModelRegistry, MLDatasetRegistry, MLModelStatusEnum
+    if db.query(MLModelRegistry).filter(MLModelRegistry.model_version == "1.0").count() == 0:
+        model_v1 = MLModelRegistry(
+            model_name="PatientTriage Decompensation Risk Classifier",
+            model_version="1.0",
+            model_type="LogisticRegression (L2)",
+            feature_schema_version="1.0",
+            dataset_version="v1.0",
+            status=MLModelStatusEnum.PRODUCTION,
+            validation_metrics_json={"auroc": 1.0, "auprc": 1.0, "sensitivity": 1.0, "brier_score": 0.0},
+            test_metrics_json={"auroc": 1.0, "auprc": 1.0, "sensitivity": 0.9963, "specificity": 1.0, "brier_score": 0.0009},
+            hyperparameters_json={"max_iter": 1000, "class_weight": "balanced"},
+            artifact_path="ml_pipeline/models/triage_risk_model_v1.0.joblib",
+            trained_at=datetime.datetime.utcnow(),
+            approved_by="DIR001",
+            approved_at=datetime.datetime.utcnow(),
+            deployed_at=datetime.datetime.utcnow()
+        )
+        db.add(model_v1)
+
+        dataset_v1 = MLDatasetRegistry(
+            dataset_version="v1.0",
+            feature_schema_version="1.0",
+            source_data_range="Development Cohort (5000 encounters)",
+            total_encounters=5000,
+            eligible_count=8097,
+            excluded_count=0,
+            positive_count=1810,
+            negative_count=6287,
+            manifest_json={"manifest_file": "manifest_v1.0.json"}
+        )
+        db.add(dataset_v1)
+        db.commit()
+
     return {
         "status": "success",
         "message": "Synthetic demo data successfully initialized for DEMO001 & METRO002."

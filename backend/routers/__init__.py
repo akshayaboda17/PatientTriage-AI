@@ -9,6 +9,7 @@ from routers.physician import router as physician_router
 from routers.audit import router as audit_router
 from routers.staff import router as staff_router
 from routers.demo import router as demo_router
+from routers.mlops import router as mlops_router
 
 __all__ = [
     "auth_router",
@@ -21,5 +22,6 @@ __all__ = [
     "physician_router",
     "audit_router",
     "staff_router",
-    "demo_router"
+    "demo_router",
+    "mlops_router"
 ]

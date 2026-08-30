@@ -242,6 +242,7 @@ class EDEncounter(Base):
     ai_risk_assessments = relationship("AIRiskAssessment", back_populates="encounter", cascade="all, delete-orphan")
     alerts = relationship("ClinicalAlert", back_populates="encounter", cascade="all, delete-orphan")
     physician_assessments = relationship("PhysicianAssessment", back_populates="encounter", cascade="all, delete-orphan", order_by="PhysicianAssessment.created_at.desc()")
+    ground_truth_outcome = relationship("ClinicalGroundTruthOutcome", back_populates="encounter", uselist=False, cascade="all, delete-orphan")
 
     def to_dict(self):
         return {
@@ -690,6 +691,160 @@ class TriageAuditLog(Base):
             "override_reason": self.override_reason.value if self.override_reason and hasattr(self.override_reason, 'value') else self.override_reason,
             "clinical_notes": self.clinical_notes,
             "top_3_drivers": self.top_3_drivers
+        }
+
+# ==========================================
+# MLOps, Model Registry & Continuous Learning
+# ==========================================
+
+class MLModelStatusEnum(enum.Enum):
+    CANDIDATE = "CANDIDATE"
+    VALIDATING = "VALIDATING"
+    APPROVED = "APPROVED"
+    PRODUCTION = "PRODUCTION"
+    REJECTED = "REJECTED"
+    RETIRED = "RETIRED"
+
+class MLModelRegistry(Base):
+    __tablename__ = "ml_model_registry"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    model_name = Column(String(100), nullable=False)
+    model_version = Column(String(50), unique=True, nullable=False, index=True)
+    model_type = Column(String(100), nullable=False)
+    feature_schema_version = Column(String(50), default="1.0", nullable=False)
+    dataset_version = Column(String(50), nullable=False)
+    status = Column(Enum(MLModelStatusEnum), default=MLModelStatusEnum.CANDIDATE, nullable=False, index=True)
+    
+    validation_metrics_json = Column(JSON, nullable=False)
+    test_metrics_json = Column(JSON, nullable=True)
+    hyperparameters_json = Column(JSON, nullable=True)
+    artifact_path = Column(String(255), nullable=True)
+    
+    trained_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    approved_by = Column(String(50), nullable=True)
+    approved_at = Column(DateTime, nullable=True)
+    deployed_at = Column(DateTime, nullable=True)
+    retired_at = Column(DateTime, nullable=True)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "model_name": self.model_name,
+            "model_version": self.model_version,
+            "model_type": self.model_type,
+            "feature_schema_version": self.feature_schema_version,
+            "dataset_version": self.dataset_version,
+            "status": self.status.value,
+            "validation_metrics": self.validation_metrics_json,
+            "test_metrics": self.test_metrics_json,
+            "hyperparameters": self.hyperparameters_json,
+            "artifact_path": self.artifact_path,
+            "trained_at": self.trained_at.isoformat() if self.trained_at else None,
+            "approved_by": self.approved_by,
+            "approved_at": self.approved_at.isoformat() if self.approved_at else None,
+            "deployed_at": self.deployed_at.isoformat() if self.deployed_at else None,
+            "retired_at": self.retired_at.isoformat() if self.retired_at else None
+        }
+
+class MLDatasetRegistry(Base):
+    __tablename__ = "ml_dataset_registry"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    dataset_version = Column(String(50), unique=True, nullable=False, index=True)
+    feature_schema_version = Column(String(50), default="1.0", nullable=False)
+    source_data_range = Column(String(100), nullable=False)
+    
+    total_encounters = Column(Integer, nullable=False)
+    eligible_count = Column(Integer, nullable=False)
+    excluded_count = Column(Integer, default=0, nullable=False)
+    positive_count = Column(Integer, nullable=False)
+    negative_count = Column(Integer, nullable=False)
+    
+    exclusion_reasons_json = Column(JSON, nullable=True)
+    manifest_json = Column(JSON, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "dataset_version": self.dataset_version,
+            "feature_schema_version": self.feature_schema_version,
+            "source_data_range": self.source_data_range,
+            "total_encounters": self.total_encounters,
+            "eligible_count": self.eligible_count,
+            "excluded_count": self.excluded_count,
+            "positive_count": self.positive_count,
+            "negative_count": self.negative_count,
+            "exclusion_reasons": self.exclusion_reasons_json,
+            "manifest": self.manifest_json,
+            "created_at": self.created_at.isoformat() if self.created_at else None
+        }
+
+class ClinicalGroundTruthOutcome(Base):
+    __tablename__ = "clinical_ground_truth_outcomes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    hospital_id = Column(String(50), nullable=False, index=True)
+    patient_id = Column(String(50), nullable=False, index=True)
+    encounter_id = Column(String(50), ForeignKey('ed_encounters.encounter_id'), unique=True, nullable=False, index=True)
+    
+    icu_admitted_24h = Column(Boolean, default=False, nullable=False)
+    intubated_24h = Column(Boolean, default=False, nullable=False)
+    vasopressor_24h = Column(Boolean, default=False, nullable=False)
+    mortality_24h = Column(Boolean, default=False, nullable=False)
+    composite_critical_outcome_24h = Column(Integer, default=0, nullable=False) # 1 or 0
+    
+    outcome_timestamp = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    outcome_recorded_by = Column(String(50), nullable=False)
+    eligibility_status = Column(String(50), default="ELIGIBLE", nullable=False) # ELIGIBLE, EXCLUDED_MISSING_PREDICTION, etc.
+    eligibility_notes = Column(Text, nullable=True)
+
+    encounter = relationship("EDEncounter", back_populates="ground_truth_outcome")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "hospital_id": self.hospital_id,
+            "patient_id": self.patient_id,
+            "encounter_id": self.encounter_id,
+            "icu_admitted_24h": self.icu_admitted_24h,
+            "intubated_24h": self.intubated_24h,
+            "vasopressor_24h": self.vasopressor_24h,
+            "mortality_24h": self.mortality_24h,
+            "composite_critical_outcome_24h": self.composite_critical_outcome_24h,
+            "outcome_timestamp": self.outcome_timestamp.isoformat() if self.outcome_timestamp else None,
+            "outcome_recorded_by": self.outcome_recorded_by,
+            "eligibility_status": self.eligibility_status,
+            "eligibility_notes": self.eligibility_notes
+        }
+
+class MLMonitoringLog(Base):
+    __tablename__ = "ml_monitoring_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    hospital_id = Column(String(50), nullable=False, index=True)
+    model_version = Column(String(50), nullable=False, index=True)
+    metric_type = Column(String(50), nullable=False) # DRIFT, PERFORMANCE, LATENCY, OVERRIDE_RATE
+    metric_name = Column(String(100), nullable=False)
+    metric_value = Column(Float, nullable=False)
+    threshold = Column(Float, nullable=True)
+    status = Column(String(20), default="NORMAL", nullable=False) # NORMAL, WARNING, ALERT
+    details_json = Column(JSON, nullable=True)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "hospital_id": self.hospital_id,
+            "model_version": self.model_version,
+            "metric_type": self.metric_type,
+            "metric_name": self.metric_name,
+            "metric_value": self.metric_value,
+            "threshold": self.threshold,
+            "status": self.status,
+            "details": self.details_json,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None
         }
 
 # ==========================================
