@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { Activity, ShieldCheck, CheckCircle, XCircle, Users, Clock, RefreshCw } from 'lucide-react'
+import PatientProfile from './components/PatientProfile'
+import PatientRegistration from './components/PatientRegistration'
 
 function App() {
   const [result, setResult] = useState(null)
@@ -10,6 +12,7 @@ function App() {
   // Phase 4: Queue State
   const [queue, setQueue] = useState([])
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [activePatientId, setActivePatientId] = useState(null)
 
   // 1. Define the function first
   const fetchQueue = async () => {
@@ -70,13 +73,19 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-900 text-white p-8 font-sans flex flex-col md:flex-row gap-8">
+    <div className="min-h-screen bg-gray-900 text-white p-6 font-sans md:p-8">
+      <header className="mb-8 border-b border-gray-800 pb-5">
+        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-cyan-400">Clinical operations</p>
+        <h1 className="mt-1 text-3xl font-bold text-white">PatientTriage.ai</h1>
+      </header>
+
+      <div className="flex flex-col gap-8 xl:flex-row">
       
       {/* Left Column: The AI Triage Tool (Phase 2 & 3) */}
       <div className="flex-1">
-        <h1 className="text-3xl font-bold mb-6 flex items-center gap-3">
-          <Activity className="text-red-500" /> PatientTriage.ai
-        </h1>
+        <h2 className="text-2xl font-bold mb-6 flex items-center gap-3">
+          <Activity className="text-red-500" /> AI Triage Workspace
+        </h2>
         
         <button onClick={handleTriage} className="bg-blue-600 hover:bg-blue-500 px-6 py-3 rounded-lg font-semibold transition w-full md:w-auto">
           Run AI Triage (Benchmark Case #3)
@@ -169,6 +178,13 @@ function App() {
             ))
           )}
         </div>
+      </div>
+
+      </div>
+
+      <div className="mt-8 grid gap-8 xl:grid-cols-2">
+        <PatientRegistration onPatientCreated={setActivePatientId} />
+        <PatientProfile key={activePatientId ?? 'empty-profile'} patientId={activePatientId} onPatientIdChange={setActivePatientId} />
       </div>
 
     </div>

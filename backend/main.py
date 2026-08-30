@@ -1,11 +1,12 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 import sys
 import os
 
 
-from models import SessionLocal
+from models import Patient, SessionLocal
+from schemas import PatientCreate, PatientResponse
 
 
 def get_db():
@@ -21,6 +22,44 @@ from triage_engine import TriageEngine
 
 app = FastAPI(title="PatientTriage.ai API")
 engine = TriageEngine()
+
+
+def serialize_patient(patient: Patient) -> PatientResponse:
+    """Keep API output explicit and independent of Pydantic version details."""
+    return PatientResponse(
+        id=patient.id,
+        patient_id=patient.patient_id,
+        first_name=patient.first_name,
+        last_name=patient.last_name,
+        date_of_birth=patient.date_of_birth,
+        gender=patient.gender,
+        contact_info=patient.contact_info,
+        emergency_contact=patient.emergency_contact,
+        known_allergies=patient.known_allergies,
+        age=patient.age,
+    )
+
+
+@app.post("/api/patients/", response_model=PatientResponse, status_code=status.HTTP_201_CREATED)
+def register_patient(patient: PatientCreate, db: Session = Depends(get_db)):
+    """Register a patient and assign a stable medical-record number."""
+    patient_data = patient.model_dump() if hasattr(patient, "model_dump") else patient.dict()
+    db_patient = Patient(**patient_data)
+    db.add(db_patient)
+    db.flush()
+    db_patient.patient_id = f"PT-{db_patient.id:06d}"
+    db.commit()
+    db.refresh(db_patient)
+    return serialize_patient(db_patient)
+
+
+@app.get("/api/patients/{patient_id}", response_model=PatientResponse)
+def get_patient_profile(patient_id: int, db: Session = Depends(get_db)):
+    """Retrieve the full registration profile for one patient."""
+    patient = db.get(Patient, patient_id)
+    if patient is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Patient not found")
+    return serialize_patient(patient)
 
 # Pydantic model for incoming frontend data
 class PatientInput(BaseModel):

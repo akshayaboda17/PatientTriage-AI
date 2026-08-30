@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, create_engine
+from sqlalchemy import Column, Integer, String, Float, Boolean, Date, create_engine, text
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 Base = declarative_base()
@@ -7,9 +7,19 @@ class Patient(Base):
     __tablename__ = 'patients'
 
     id = Column(Integer, primary_key=True, index=True)
-    patient_id = Column(String, unique=True, index=True) # e.g., TEMP-4587
+    # A human-readable medical-record number. Existing triage data can continue
+    # to use this field while the integer id is used by the patient API.
+    patient_id = Column(String, unique=True, index=True, nullable=True) # e.g., PT-000001
+    first_name = Column(String(100), nullable=False, default="")
+    last_name = Column(String(100), nullable=False, default="")
+    date_of_birth = Column(Date, nullable=True)
+    gender = Column(String(50), nullable=True)
+    contact_info = Column(String(255), nullable=True)
+    emergency_contact = Column(String(255), nullable=True)
+    known_allergies = Column(String, nullable=True)
+
+    # Fields retained from the initial triage prototype.
     age = Column(Float, nullable=True)
-    gender = Column(String, nullable=True)
     arrival_mode = Column(String)
     
     # Vitals
@@ -29,7 +39,6 @@ class Patient(Base):
 
 # Setup SQLite Database for the prototype
 engine = create_engine("sqlite:///./triage_database.db", connect_args={"check_same_thread": False})
-Base.metadata.create_all(bind=engine)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 import datetime
 import enum
@@ -81,3 +90,23 @@ class TriageAuditLog(Base):
             "clinical_notes": self.clinical_notes,
             "top_3_drivers": self.top_3_drivers
         }
+
+
+# This prototype already has a SQLite database in use.  Add the registration
+# columns when opening an older database instead of requiring a destructive reset.
+Base.metadata.create_all(bind=engine)
+with engine.begin() as connection:
+    existing_columns = {
+        row[1] for row in connection.execute(text("PRAGMA table_info(patients)"))
+    }
+    patient_column_migrations = {
+        "first_name": "VARCHAR(100)",
+        "last_name": "VARCHAR(100)",
+        "date_of_birth": "DATE",
+        "contact_info": "VARCHAR(255)",
+        "emergency_contact": "VARCHAR(255)",
+        "known_allergies": "VARCHAR",
+    }
+    for column_name, column_type in patient_column_migrations.items():
+        if column_name not in existing_columns:
+            connection.execute(text(f"ALTER TABLE patients ADD COLUMN {column_name} {column_type}"))

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { AlertTriangle, CheckCircle, ShieldAlert, X } from 'lucide-react';
 
 const OVERRIDE_REASONS = [
