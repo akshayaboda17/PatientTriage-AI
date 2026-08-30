@@ -1,7 +1,8 @@
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from typing import Optional, List
 from sqlalchemy.orm import Session
 import jwt
 import datetime
@@ -14,7 +15,7 @@ import secrets
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__))))
 from models import (
     SessionLocal, Hospital, Staff, Role, Permission, Patient, TriageRecord, TriageAuditLog, AuditLog,
-    OverrideReasonEnum, ActionTypeEnum, seed_database, get_hash
+    OverrideReasonEnum, ActionTypeEnum, seed_database, get_hash, Encounter, VitalSigns, TriageAssessment
 )
 
 from models import Patient, SessionLocal
@@ -239,6 +240,118 @@ class PermissionChecker:
                 detail="You do not have authorization to perform this clinical or admin operation."
             )
         return current_user
+
+class EncounterCreateInput(BaseModel):
+    patient_id: str
+
+class EncounterResponse(BaseModel):
+    id: int
+    encounter_id: str
+    patient_id: str
+    hospital_id: str
+    status: str
+    arrival_time: datetime.datetime
+    created_at: datetime.datetime
+
+    class Config:
+        from_attributes = True
+
+class VitalSignsCreateInput(BaseModel):
+    heart_rate: Optional[int] = None
+    respiratory_rate: Optional[int] = None
+    systolic_bp: Optional[int] = None
+    diastolic_bp: Optional[int] = None
+    spo2: Optional[int] = None
+    temperature: Optional[float] = None
+    oxygen_support: str = "None"
+    oxygen_flow_rate: Optional[float] = None
+    weight: Optional[float] = None
+    height: Optional[float] = None
+
+class VitalSignsResponse(BaseModel):
+    vital_id: int
+    encounter_id: int
+    hospital_id: str
+    recorded_by: str
+    recorded_at: datetime.datetime
+    heart_rate: Optional[int]
+    respiratory_rate: Optional[int]
+    systolic_bp: Optional[int]
+    diastolic_bp: Optional[int]
+    spo2: Optional[int]
+    temperature: Optional[float]
+    oxygen_support: str
+    oxygen_flow_rate: Optional[float]
+    weight: Optional[float]
+    height: Optional[float]
+    is_corrected: bool
+    correction_reason: Optional[str]
+    corrected_by: Optional[str]
+    corrected_at: Optional[datetime.datetime]
+
+    class Config:
+        from_attributes = True
+
+class VitalSignsCorrectionInput(BaseModel):
+    heart_rate: Optional[int] = None
+    respiratory_rate: Optional[int] = None
+    systolic_bp: Optional[int] = None
+    diastolic_bp: Optional[int] = None
+    spo2: Optional[int] = None
+    temperature: Optional[float] = None
+    oxygen_support: str = "None"
+    oxygen_flow_rate: Optional[float] = None
+    weight: Optional[float] = None
+    height: Optional[float] = None
+    correction_reason: str
+
+class TriageAssessmentCreateInput(BaseModel):
+    presenting_complaint: str
+    symptom_onset: Optional[str] = None
+    symptom_severity: Optional[int] = None
+    associated_symptoms: Optional[str] = None
+    medical_history: Optional[str] = None
+    medications: Optional[str] = None
+    allergies: Optional[str] = None
+    triage_notes: Optional[str] = None
+    clinical_priority: Optional[str] = None
+    status: str = "DRAFT"
+
+class TriageAssessmentPatchInput(BaseModel):
+    presenting_complaint: Optional[str] = None
+    symptom_onset: Optional[str] = None
+    symptom_severity: Optional[int] = None
+    associated_symptoms: Optional[str] = None
+    medical_history: Optional[str] = None
+    medications: Optional[str] = None
+    allergies: Optional[str] = None
+    triage_notes: Optional[str] = None
+    clinical_priority: Optional[str] = None
+    status: Optional[str] = None
+
+class TriageAssessmentResponse(BaseModel):
+    triage_id: int
+    hospital_id: str
+    encounter_id: int
+    assessed_by: str
+    assessed_at: datetime.datetime
+    presenting_complaint: str
+    symptom_onset: Optional[str]
+    symptom_severity: Optional[int]
+    associated_symptoms: Optional[str]
+    medical_history: Optional[str]
+    medications: Optional[str]
+    allergies: Optional[str]
+    triage_notes: Optional[str]
+    clinical_priority: Optional[str]
+    status: str
+    created_at: datetime.datetime
+    updated_at: datetime.datetime
+    amended_by: Optional[str]
+    amended_at: Optional[datetime.datetime]
+
+    class Config:
+        from_attributes = True
 
 # ==========================================
 # AUTHENTICATION API ROUTES
@@ -700,6 +813,369 @@ def create_patient(data: PatientIntakeInput, db: Session = Depends(get_db), curr
     
     log_audit(db, current_user["hospital_id"], current_user["staff_id"], current_user["role"], f"Registered patient {data.patient_id}", "patient", data.patient_id)
     return {"message": "Patient registered successfully", "patient": data.patient_id}
+
+@app.post("/api/v1/encounters", response_model=EncounterResponse)
+def create_encounter(data: EncounterCreateInput, db: Session = Depends(get_db), current_user: dict = Depends(PermissionChecker(Permissions.PATIENT_UPDATE))):
+    # Enforce multi-tenant patient ownership
+    patient = db.query(Patient).filter(Patient.patient_id == data.patient_id, Patient.hospital_id == current_user["hospital_id"]).first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient profile not found in your hospital.")
+
+    # Check if there is already an active encounter (not discharged)
+    active_enc = db.query(Encounter).filter(
+        Encounter.patient_id == data.patient_id,
+        Encounter.hospital_id == current_user["hospital_id"],
+        Encounter.status != "DISCHARGED"
+    ).first()
+    if active_enc:
+        raise HTTPException(status_code=400, detail=f"Patient already has an active ED encounter ({active_enc.encounter_id}).")
+
+    # Generate Encounter ID (ENC-YYYYMMDD-XXXX style or dynamic)
+    date_str = datetime.datetime.utcnow().strftime("%Y%m%d")
+    count = db.query(Encounter).filter(Encounter.hospital_id == current_user["hospital_id"]).count() + 1
+    enc_id = f"ENC-{date_str}-{count:04d}"
+
+    new_enc = Encounter(
+        encounter_id=enc_id,
+        patient_id=data.patient_id,
+        hospital_id=current_user["hospital_id"],
+        status="WAITING_FOR_TRIAGE",
+        arrival_time=datetime.datetime.utcnow(),
+        created_at=datetime.datetime.utcnow()
+    )
+    db.add(new_enc)
+    db.commit()
+    db.refresh(new_enc)
+
+    log_audit(db, current_user["hospital_id"], current_user["staff_id"], current_user["role"], f"Created ED Encounter {enc_id}", "encounter", enc_id)
+
+    return EncounterResponse(
+        id=new_enc.id,
+        encounter_id=new_enc.encounter_id,
+        patient_id=new_enc.patient_id,
+        hospital_id=new_enc.hospital_id,
+        status=new_enc.status,
+        arrival_time=new_enc.arrival_time.isoformat(),
+        created_at=new_enc.created_at.isoformat()
+    )
+
+@app.get("/api/v1/patients/{patient_id}/encounters", response_model=List[EncounterResponse])
+def get_patient_encounters(patient_id: str, db: Session = Depends(get_db), current_user: dict = Depends(PermissionChecker(Permissions.PATIENT_VIEW))):
+    # Enforce multi-tenant isolation
+    patient = db.query(Patient).filter(Patient.patient_id == patient_id, Patient.hospital_id == current_user["hospital_id"]).first()
+    if not patient:
+        raise HTTPException(status_code=404, detail="Patient profile not found.")
+
+    encounters = db.query(Encounter).filter(
+        Encounter.patient_id == patient_id,
+        Encounter.hospital_id == current_user["hospital_id"]
+    ).order_by(Encounter.created_at.desc()).all()
+
+    return [EncounterResponse(
+        id=e.id,
+        encounter_id=e.encounter_id,
+        patient_id=e.patient_id,
+        hospital_id=e.hospital_id,
+        status=e.status,
+        arrival_time=e.arrival_time.isoformat(),
+        created_at=e.created_at.isoformat()
+    ) for e in encounters]
+
+@app.get("/api/v1/encounters/{encounter_id}", response_model=EncounterResponse)
+def get_encounter_details(encounter_id: str, db: Session = Depends(get_db), current_user: dict = Depends(PermissionChecker(Permissions.PATIENT_VIEW))):
+    encounter = db.query(Encounter).filter(
+        Encounter.encounter_id == encounter_id,
+        Encounter.hospital_id == current_user["hospital_id"]
+    ).first()
+    if not encounter:
+        raise HTTPException(status_code=404, detail="Encounter record not found.")
+
+    return EncounterResponse(
+        id=encounter.id,
+        encounter_id=encounter.encounter_id,
+        patient_id=encounter.patient_id,
+        hospital_id=encounter.hospital_id,
+        status=encounter.status,
+        arrival_time=encounter.arrival_time.isoformat(),
+        created_at=encounter.created_at.isoformat()
+    )
+
+@app.post("/api/v1/encounters/{encounter_id}/vitals", response_model=VitalSignsResponse)
+def record_vital_signs(encounter_id: str, data: VitalSignsCreateInput, db: Session = Depends(get_db), current_user: dict = Depends(PermissionChecker(Permissions.VITALS_CREATE))):
+    encounter = db.query(Encounter).filter(
+        Encounter.encounter_id == encounter_id,
+        Encounter.hospital_id == current_user["hospital_id"]
+    ).first()
+    if not encounter:
+        raise HTTPException(status_code=404, detail="Encounter not found.")
+
+    # Validation
+    if data.heart_rate is not None and (data.heart_rate < 0 or data.heart_rate > 300):
+        raise HTTPException(status_code=400, detail="Invalid heart rate value.")
+    if data.respiratory_rate is not None and (data.respiratory_rate < 0 or data.respiratory_rate > 100):
+        raise HTTPException(status_code=400, detail="Invalid respiratory rate value.")
+    if data.systolic_bp is not None and (data.systolic_bp < 0 or data.systolic_bp > 300):
+        raise HTTPException(status_code=400, detail="Invalid systolic blood pressure.")
+    if data.diastolic_bp is not None and (data.diastolic_bp < 0 or data.diastolic_bp > 200):
+        raise HTTPException(status_code=400, detail="Invalid diastolic blood pressure.")
+    if data.spo2 is not None and (data.spo2 < 0 or data.spo2 > 100):
+        raise HTTPException(status_code=400, detail="Invalid oxygen saturation percentage.")
+    if data.temperature is not None and (data.temperature < 20.0 or data.temperature > 50.0):
+        raise HTTPException(status_code=400, detail="Invalid temperature value.")
+
+    new_vitals = VitalSigns(
+        encounter_id=encounter.id,
+        hospital_id=current_user["hospital_id"],
+        recorded_by=current_user["staff_id"],
+        recorded_at=datetime.datetime.utcnow(),
+        heart_rate=data.heart_rate,
+        respiratory_rate=data.respiratory_rate,
+        systolic_bp=data.systolic_bp,
+        diastolic_bp=data.diastolic_bp,
+        spo2=data.spo2,
+        temperature=data.temperature,
+        oxygen_support=data.oxygen_support,
+        oxygen_flow_rate=data.oxygen_flow_rate,
+        weight=data.weight,
+        height=data.height
+    )
+    db.add(new_vitals)
+    db.commit()
+    db.refresh(new_vitals)
+
+    log_audit(db, current_user["hospital_id"], current_user["staff_id"], current_user["role"], f"Recorded vital signs for encounter {encounter_id}", "vital_signs", str(new_vitals.vital_id))
+
+    return new_vitals
+
+@app.get("/api/v1/encounters/{encounter_id}/vitals", response_model=List[VitalSignsResponse])
+def get_encounter_vitals(encounter_id: str, db: Session = Depends(get_db), current_user: dict = Depends(PermissionChecker(Permissions.VITALS_VIEW))):
+    encounter = db.query(Encounter).filter(
+        Encounter.encounter_id == encounter_id,
+        Encounter.hospital_id == current_user["hospital_id"]
+    ).first()
+    if not encounter:
+        raise HTTPException(status_code=404, detail="Encounter not found.")
+
+    vitals = db.query(VitalSigns).filter(
+        VitalSigns.encounter_id == encounter.id,
+        VitalSigns.hospital_id == current_user["hospital_id"]
+    ).order_by(VitalSigns.recorded_at.desc()).all()
+
+    return vitals
+
+@app.get("/api/v1/encounters/{encounter_id}/vitals/latest", response_model=Optional[VitalSignsResponse])
+def get_encounter_latest_vitals(encounter_id: str, db: Session = Depends(get_db), current_user: dict = Depends(PermissionChecker(Permissions.VITALS_VIEW))):
+    encounter = db.query(Encounter).filter(
+        Encounter.encounter_id == encounter_id,
+        Encounter.hospital_id == current_user["hospital_id"]
+    ).first()
+    if not encounter:
+        raise HTTPException(status_code=404, detail="Encounter not found.")
+
+    vitals = db.query(VitalSigns).filter(
+        VitalSigns.encounter_id == encounter.id,
+        VitalSigns.hospital_id == current_user["hospital_id"]
+    ).order_by(VitalSigns.recorded_at.desc()).first()
+
+    return vitals
+
+@app.patch("/api/v1/vitals/{vital_id}", response_model=VitalSignsResponse)
+def correct_vital_signs(vital_id: int, data: VitalSignsCorrectionInput, db: Session = Depends(get_db), current_user: dict = Depends(PermissionChecker(Permissions.VITALS_UPDATE))):
+    vitals = db.query(VitalSigns).filter(
+        VitalSigns.vital_id == vital_id,
+        VitalSigns.hospital_id == current_user["hospital_id"]
+    ).first()
+    if not vitals:
+        raise HTTPException(status_code=404, detail="Vitals entry not found.")
+
+    # Validation
+    if data.heart_rate is not None and (data.heart_rate < 0 or data.heart_rate > 300):
+        raise HTTPException(status_code=400, detail="Invalid heart rate value.")
+    if data.respiratory_rate is not None and (data.respiratory_rate < 0 or data.respiratory_rate > 100):
+        raise HTTPException(status_code=400, detail="Invalid respiratory rate value.")
+    if data.systolic_bp is not None and (data.systolic_bp < 0 or data.systolic_bp > 300):
+        raise HTTPException(status_code=400, detail="Invalid systolic blood pressure.")
+    if data.diastolic_bp is not None and (data.diastolic_bp < 0 or data.diastolic_bp > 200):
+        raise HTTPException(status_code=400, detail="Invalid diastolic blood pressure.")
+    if data.spo2 is not None and (data.spo2 < 0 or data.spo2 > 100):
+        raise HTTPException(status_code=400, detail="Invalid oxygen saturation percentage.")
+    if data.temperature is not None and (data.temperature < 20.0 or data.temperature > 50.0):
+        raise HTTPException(status_code=400, detail="Invalid temperature value.")
+    if not data.correction_reason.strip():
+        raise HTTPException(status_code=400, detail="Correction reason is mandatory.")
+
+    old_values = {
+        "heart_rate": vitals.heart_rate,
+        "respiratory_rate": vitals.respiratory_rate,
+        "systolic_bp": vitals.systolic_bp,
+        "diastolic_bp": vitals.diastolic_bp,
+        "spo2": vitals.spo2,
+        "temperature": vitals.temperature,
+        "oxygen_support": vitals.oxygen_support,
+        "oxygen_flow_rate": vitals.oxygen_flow_rate,
+        "weight": vitals.weight,
+        "height": vitals.height
+    }
+
+    vitals.heart_rate = data.heart_rate
+    vitals.respiratory_rate = data.respiratory_rate
+    vitals.systolic_bp = data.systolic_bp
+    vitals.diastolic_bp = data.diastolic_bp
+    vitals.spo2 = data.spo2
+    vitals.temperature = data.temperature
+    vitals.oxygen_support = data.oxygen_support
+    vitals.oxygen_flow_rate = data.oxygen_flow_rate
+    vitals.weight = data.weight
+    vitals.height = data.height
+    vitals.is_corrected = True
+    vitals.correction_reason = data.correction_reason
+    vitals.corrected_by = current_user["staff_id"]
+    vitals.corrected_at = datetime.datetime.utcnow()
+
+    db.commit()
+    db.refresh(vitals)
+
+    log_audit(db, current_user["hospital_id"], current_user["staff_id"], current_user["role"], f"Corrected vital signs {vital_id}", "vital_signs", str(vital_id), details=f"Old: {old_values}, Reason: {data.correction_reason}")
+
+    return vitals
+
+@app.post("/api/v1/encounters/{encounter_id}/triage", response_model=TriageAssessmentResponse)
+def create_triage_assessment(encounter_id: str, data: TriageAssessmentCreateInput, db: Session = Depends(get_db), current_user: dict = Depends(PermissionChecker(Permissions.TRIAGE_CREATE))):
+    encounter = db.query(Encounter).filter(
+        Encounter.encounter_id == encounter_id,
+        Encounter.hospital_id == current_user["hospital_id"]
+    ).first()
+    if not encounter:
+        raise HTTPException(status_code=404, detail="Encounter not found.")
+
+    if encounter.status in ["TRIAGED", "DISCHARGED"]:
+        raise HTTPException(status_code=400, detail="Encounter is in a closed/finished state and cannot add/start triage.")
+
+    existing = db.query(TriageAssessment).filter(TriageAssessment.encounter_id == encounter.id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="Triage assessment already exists for this encounter. Use update.")
+
+    if data.status == "COMPLETED":
+        if not data.presenting_complaint.strip():
+            raise HTTPException(status_code=400, detail="Presenting complaint is required to complete triage.")
+        if data.symptom_severity is not None and (data.symptom_severity < 0 or data.symptom_severity > 10):
+            raise HTTPException(status_code=400, detail="Symptom severity must be between 0 and 10.")
+        if not data.clinical_priority:
+            raise HTTPException(status_code=400, detail="Clinical priority is required to complete triage.")
+
+    new_triage = TriageAssessment(
+        hospital_id=current_user["hospital_id"],
+        encounter_id=encounter.id,
+        assessed_by=current_user["staff_id"],
+        assessed_at=datetime.datetime.utcnow(),
+        presenting_complaint=data.presenting_complaint,
+        symptom_onset=data.symptom_onset,
+        symptom_severity=data.symptom_severity,
+        associated_symptoms=data.associated_symptoms,
+        medical_history=data.medical_history,
+        medications=data.medications,
+        allergies=data.allergies,
+        triage_notes=data.triage_notes,
+        clinical_priority=data.clinical_priority,
+        status=data.status
+    )
+    db.add(new_triage)
+    
+    if data.status == "COMPLETED":
+        encounter.status = "TRIAGED"
+    else:
+        encounter.status = "TRIAGE_IN_PROGRESS"
+        
+    db.commit()
+    db.refresh(new_triage)
+
+    log_audit(db, current_user["hospital_id"], current_user["staff_id"], current_user["role"], f"Created triage assessment draft ({data.status}) for encounter {encounter_id}", "triage_assessment", str(new_triage.triage_id))
+
+    return new_triage
+
+@app.get("/api/v1/encounters/{encounter_id}/triage", response_model=Optional[TriageAssessmentResponse])
+def get_triage_assessment(encounter_id: str, db: Session = Depends(get_db), current_user: dict = Depends(PermissionChecker(Permissions.TRIAGE_VIEW))):
+    encounter = db.query(Encounter).filter(
+        Encounter.encounter_id == encounter_id,
+        Encounter.hospital_id == current_user["hospital_id"]
+    ).first()
+    if not encounter:
+        raise HTTPException(status_code=404, detail="Encounter not found.")
+
+    triage = db.query(TriageAssessment).filter(
+        TriageAssessment.encounter_id == encounter.id,
+        TriageAssessment.hospital_id == current_user["hospital_id"]
+    ).first()
+    return triage
+
+@app.patch("/api/v1/encounters/{encounter_id}/triage", response_model=TriageAssessmentResponse)
+def update_triage_assessment(encounter_id: str, data: TriageAssessmentPatchInput, db: Session = Depends(get_db), current_user: dict = Depends(PermissionChecker(Permissions.TRIAGE_UPDATE))):
+    encounter = db.query(Encounter).filter(
+        Encounter.encounter_id == encounter_id,
+        Encounter.hospital_id == current_user["hospital_id"]
+    ).first()
+    if not encounter:
+        raise HTTPException(status_code=404, detail="Encounter not found.")
+
+    triage = db.query(TriageAssessment).filter(
+        TriageAssessment.encounter_id == encounter.id,
+        TriageAssessment.hospital_id == current_user["hospital_id"]
+    ).first()
+    if not triage:
+        raise HTTPException(status_code=404, detail="Triage assessment not found.")
+
+    if encounter.status == "DISCHARGED":
+        raise HTTPException(status_code=400, detail="Cannot update triage of a discharged encounter.")
+
+    if data.symptom_severity is not None and (data.symptom_severity < 0 or data.symptom_severity > 10):
+        raise HTTPException(status_code=400, detail="Symptom severity must be between 0 and 10.")
+
+    old_priority = triage.clinical_priority
+    new_priority = data.clinical_priority if data.clinical_priority is not None else triage.clinical_priority
+
+    if data.status == "COMPLETED" or triage.status == "COMPLETED":
+        complaint = data.presenting_complaint if data.presenting_complaint is not None else triage.presenting_complaint
+        priority = data.clinical_priority if data.clinical_priority is not None else triage.clinical_priority
+        if not complaint or not complaint.strip():
+            raise HTTPException(status_code=400, detail="Presenting complaint is required to complete triage.")
+        if not priority:
+            raise HTTPException(status_code=400, detail="Clinical priority is required to complete triage.")
+
+    if data.presenting_complaint is not None: triage.presenting_complaint = data.presenting_complaint
+    if data.symptom_onset is not None: triage.symptom_onset = data.symptom_onset
+    if data.symptom_severity is not None: triage.symptom_severity = data.symptom_severity
+    if data.associated_symptoms is not None: triage.associated_symptoms = data.associated_symptoms
+    if data.medical_history is not None: triage.medical_history = data.medical_history
+    if data.medications is not None: triage.medications = data.medications
+    if data.allergies is not None: triage.allergies = data.allergies
+    if data.triage_notes is not None: triage.triage_notes = data.triage_notes
+    if data.clinical_priority is not None: triage.clinical_priority = data.clinical_priority
+
+    is_amending = triage.status == "COMPLETED" and data.status == "COMPLETED"
+    if data.status is not None:
+        triage.status = data.status
+
+    triage.updated_at = datetime.datetime.utcnow()
+
+    if triage.status == "COMPLETED":
+        encounter.status = "TRIAGED"
+    else:
+        encounter.status = "TRIAGE_IN_PROGRESS"
+
+    if is_amending:
+        triage.status = "AMENDED"
+        triage.amended_by = current_user["staff_id"]
+        triage.amended_at = datetime.datetime.utcnow()
+        log_audit(db, current_user["hospital_id"], current_user["staff_id"], current_user["role"], f"Amended triage assessment for encounter {encounter_id}", "triage_assessment", str(triage.triage_id))
+    else:
+        log_audit(db, current_user["hospital_id"], current_user["staff_id"], current_user["role"], f"Updated triage assessment ({triage.status}) for encounter {encounter_id}", "triage_assessment", str(triage.triage_id))
+
+    if old_priority != new_priority:
+        log_audit(db, current_user["hospital_id"], current_user["staff_id"], current_user["role"], f"Priority changed for encounter {encounter_id} from {old_priority} to {new_priority}", "triage_assessment", str(triage.triage_id))
+
+    db.commit()
+    db.refresh(triage)
+    return triage
 
 @app.post("/api/v1/triage")
 def triage_evaluate(patient: TriageEvaluateInput, current_user: dict = Depends(PermissionChecker(Permissions.TRIAGE_CREATE))):

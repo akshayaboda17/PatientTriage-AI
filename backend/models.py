@@ -182,6 +182,63 @@ class AuditLog(Base):
     timestamp = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
     details = Column(Text, nullable=True)
 
+class Encounter(Base):
+    __tablename__ = 'encounters'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    encounter_id = Column(String(50), unique=True, index=True, nullable=False) # e.g. ENC-2026-000001
+    patient_id = Column(String(50), ForeignKey('patients.patient_id'), nullable=False)
+    hospital_id = Column(String(50), ForeignKey('hospitals.hospital_id'), nullable=False)
+    status = Column(String(50), default="WAITING_FOR_TRIAGE", nullable=False) # WAITING_FOR_TRIAGE, TRIAGE_IN_PROGRESS, TRIAGED, WAITING_FOR_DOCTOR, DISCHARGED
+    arrival_time = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+class VitalSigns(Base):
+    __tablename__ = 'vital_signs'
+
+    vital_id = Column(Integer, primary_key=True, autoincrement=True)
+    encounter_id = Column(Integer, ForeignKey('encounters.id'), nullable=False)
+    hospital_id = Column(String(50), ForeignKey('hospitals.hospital_id'), nullable=False)
+    recorded_by = Column(String(50), ForeignKey('staffs.staff_id'), nullable=False)
+    recorded_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    heart_rate = Column(Integer, nullable=True)
+    respiratory_rate = Column(Integer, nullable=True)
+    systolic_bp = Column(Integer, nullable=True)
+    diastolic_bp = Column(Integer, nullable=True)
+    spo2 = Column(Integer, nullable=True)
+    temperature = Column(Float, nullable=True)
+    oxygen_support = Column(String(50), default="None", nullable=False) # None, Nasal Cannula, Face Mask, Other
+    oxygen_flow_rate = Column(Float, nullable=True)
+    weight = Column(Float, nullable=True)
+    height = Column(Float, nullable=True)
+    is_corrected = Column(Boolean, default=False, nullable=False)
+    correction_reason = Column(Text, nullable=True)
+    corrected_by = Column(String(50), ForeignKey('staffs.staff_id'), nullable=True)
+    corrected_at = Column(DateTime, nullable=True)
+
+class TriageAssessment(Base):
+    __tablename__ = 'triage_assessments'
+
+    triage_id = Column(Integer, primary_key=True, autoincrement=True)
+    hospital_id = Column(String(50), ForeignKey('hospitals.hospital_id'), nullable=False)
+    encounter_id = Column(Integer, ForeignKey('encounters.id'), nullable=False)
+    assessed_by = Column(String(50), ForeignKey('staffs.staff_id'), nullable=False)
+    assessed_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    presenting_complaint = Column(String(200), nullable=False)
+    symptom_onset = Column(String(100), nullable=True)
+    symptom_severity = Column(Integer, nullable=True) # 0-10
+    associated_symptoms = Column(Text, nullable=True)
+    medical_history = Column(Text, nullable=True)
+    medications = Column(Text, nullable=True)
+    allergies = Column(Text, nullable=True) # Explicit "No known allergies" vs empty
+    triage_notes = Column(Text, nullable=True)
+    clinical_priority = Column(String(50), nullable=True) # HIGH, MEDIUM, LOW
+    status = Column(String(50), default="DRAFT", nullable=False) # DRAFT, COMPLETED, AMENDED
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    amended_by = Column(String(50), ForeignKey('staffs.staff_id'), nullable=True)
+    amended_at = Column(DateTime, nullable=True)
+
 # Setup SQLite Database for the prototype
 engine = create_engine("sqlite:///./triage_database.db", connect_args={"check_same_thread": False})
 Base.metadata.create_all(bind=engine)
@@ -266,7 +323,7 @@ def seed_database():
             ],
             "TRIAGE_NURSE": [
                 "patient:create", "patient:view", "triage:create", "triage:view",
-                "triage:update", "vitals:create", "vitals:view", "ai:view", "alert:view"
+                "triage:update", "vitals:create", "vitals:view", "vitals:update", "ai:view", "alert:view"
             ],
             "EMERGENCY_PHYSICIAN": [
                 "patient:view", "patient:update", "triage:view", "vitals:view",
@@ -346,6 +403,34 @@ def seed_database():
                 )
                 db.add(new_staff)
         db.commit()
+
+        # 6. Seed Demo Patient
+        demo_patient = db.query(Patient).filter_by(patient_id="PT-DEMO-001").first()
+        if not demo_patient:
+            demo_patient = Patient(
+                patient_id="PT-DEMO-001",
+                hospital_id="DEMO001",
+                first_name="John",
+                last_name="Doe",
+                date_of_birth=datetime.date(1980, 1, 1),
+                gender="Male",
+                age=46.0,
+                known_allergies="Penicillin"
+            )
+            db.add(demo_patient)
+            db.commit()
+
+        # 7. Seed Demo Encounter
+        demo_encounter = db.query(Encounter).filter_by(encounter_id="ENC-DEMO-001").first()
+        if not demo_encounter:
+            demo_encounter = Encounter(
+                encounter_id="ENC-DEMO-001",
+                patient_id="PT-DEMO-001",
+                hospital_id="DEMO001",
+                status="WAITING_FOR_TRIAGE"
+            )
+            db.add(demo_encounter)
+            db.commit()
 
     finally:
         db.close()
