@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { Navbar } from './components/Navbar';
 import { NotificationToast } from './components/NotificationToast';
+import { LoginPage } from './components/LoginPage';
 import { DashboardView } from './components/DashboardView';
 import { EDQueueView } from './components/EDQueueView';
 import { AlertsDashboard } from './components/AlertsDashboard';
@@ -12,19 +13,18 @@ import { StaffManagementView } from './components/StaffManagementView';
 import { AnalyticsView } from './components/AnalyticsView';
 import { MLOpsDashboard } from './components/mlops/MLOpsDashboard';
 import { PatientRegistrationModal } from './components/PatientRegistrationModal';
-import { LoginModal } from './components/LoginModal';
 
 const MainAppContent = () => {
-  const { authHeaders } = useAuth();
+  const { isAuthenticated, authHeaders } = useAuth();
   const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard', 'queue', 'alerts', 'audit', 'staff', 'analytics', 'mlops', 'patient-detail', 'physician-review'
   const [selectedEncounterId, setSelectedEncounterId] = useState(null);
   const [unacknowledgedCount, setUnacknowledgedCount] = useState(0);
 
   // Modals
   const [isRegisterOpen, setIsRegisterOpen] = useState(false);
-  const [isLoginOpen, setIsLoginOpen] = useState(false);
 
   const fetchAlertCount = async () => {
+    if (!isAuthenticated) return;
     try {
       const res = await fetch('/api/alerts?status=UNACKNOWLEDGED', { headers: authHeaders });
       if (res.ok) {
@@ -37,10 +37,12 @@ const MainAppContent = () => {
   };
 
   useEffect(() => {
-    fetchAlertCount();
-    const interval = setInterval(fetchAlertCount, 15000); // 15s refresh
-    return () => clearInterval(interval);
-  }, [authHeaders['X-Hospital-Id']]);
+    if (isAuthenticated) {
+      fetchAlertCount();
+      const interval = setInterval(fetchAlertCount, 15000); // 15s refresh
+      return () => clearInterval(interval);
+    }
+  }, [isAuthenticated, authHeaders['X-Hospital-Id']]);
 
   const handleSelectPatient = (encounterId) => {
     setSelectedEncounterId(encounterId);
@@ -65,6 +67,16 @@ const MainAppContent = () => {
     }
   };
 
+  // If unauthenticated, show the real enterprise Login Page
+  if (!isAuthenticated) {
+    return (
+      <>
+        <LoginPage />
+        <NotificationToast />
+      </>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-cyan-500 selection:text-white">
       {/* Top Navigation */}
@@ -75,11 +87,7 @@ const MainAppContent = () => {
           setActiveTab(tab);
         }}
         unacknowledgedAlertCount={unacknowledgedCount}
-        onRefresh={() => {
-          fetchAlertCount();
-        }}
         onOpenRegister={() => setIsRegisterOpen(true)}
-        onOpenLogin={() => setIsLoginOpen(true)}
       />
 
       {/* Main Clinical Viewport */}
@@ -158,13 +166,7 @@ const MainAppContent = () => {
         onPatientRegistered={handlePatientRegistered}
       />
 
-      {/* Login & Demo Persona Switcher Modal */}
-      <LoginModal
-        isOpen={isLoginOpen}
-        onClose={() => setIsLoginOpen(false)}
-      />
-
-      {/* Global Toast Notification Container (10s auto-dismiss + manual X) */}
+      {/* Global Toast Notification Container */}
       <NotificationToast />
     </div>
   );

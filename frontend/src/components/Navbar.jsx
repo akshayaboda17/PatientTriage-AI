@@ -1,66 +1,45 @@
-import React, { useState } from 'react';
-import { useAuth, DEMO_USERS } from '../context/AuthContext';
+import React from 'react';
+import { useAuth } from '../context/AuthContext';
 import { 
   Activity, Bell, Users, ShieldAlert, FileText, Building2, 
-  RefreshCw, AlertCircle, LayoutDashboard, UserPlus, LogIn,
-  BarChart2, ShieldCheck, Stethoscope, ChevronDown, Cpu
+  LayoutDashboard, UserPlus, LogOut, BarChart2, ShieldCheck, 
+  Stethoscope, Cpu, User
 } from 'lucide-react';
 
 export const Navbar = ({ 
   activeTab, 
   setActiveTab, 
   unacknowledgedAlertCount = 0, 
-  onRefresh, 
-  onOpenRegister,
-  onOpenLogin
+  onOpenRegister
 }) => {
-  const { currentStaff, switchStaff, switchHospital, hospitals, addToast, authHeaders, hasPermission } = useAuth();
-  const [seeding, setSeeding] = useState(false);
-
-  const handleSeedDemo = async () => {
-    setSeeding(true);
-    try {
-      const res = await fetch('/api/demo/seed', {
-        method: 'POST',
-        headers: { ...authHeaders }
-      });
-      if (res.ok) {
-        addToast('Synthetic demo data re-initialized successfully for DEMO001 & METRO002.', 'success');
-        if (onRefresh) onRefresh();
-      }
-    } catch (err) {
-      addToast('Failed to seed demo data', 'error');
-    } finally {
-      setSeeding(false);
-    }
-  };
+  const { user, hospital, logout, hasPermission, currentStaff } = useAuth();
 
   const getRolePill = (role) => {
     switch (role) {
       case 'CLINICAL_DIRECTOR':
-        return <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-purple-950 text-purple-300 border border-purple-800">Director</span>;
+        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-950/80 text-purple-300 border border-purple-800/60">Clinical Director</span>;
       case 'HOSPITAL_ADMIN':
-        return <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800">Admin</span>;
+        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-950/80 text-cyan-300 border border-cyan-800/60">Hospital Admin</span>;
       case 'EMERGENCY_PHYSICIAN':
-        return <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-indigo-950 text-indigo-300 border border-indigo-800">Physician</span>;
+        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-950/80 text-indigo-300 border border-indigo-800/60">Physician</span>;
       case 'TRIAGE_NURSE':
-        return <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">Nurse</span>;
+        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-800/60">Triage Nurse</span>;
       default:
-        return <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">Tech</span>;
+        return <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">{role || 'Staff'}</span>;
     }
   };
 
   return (
-    <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 shadow-lg">
+    <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-slate-800 shadow-xl">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16">
           
-          {/* Logo & Operational Status */}
+          {/* Brand Logo & Hospital Name */}
           <div className="flex items-center gap-3">
             <button 
               onClick={() => setActiveTab('dashboard')}
               className="flex items-center justify-center w-10 h-10 rounded-xl bg-gradient-to-tr from-cyan-600 to-blue-600 shadow-md shadow-cyan-500/20 hover:opacity-90 transition-opacity"
-              title="Return to Dashboard"
+              title="PatientTriage.ai Dashboard"
             >
               <Activity className="w-6 h-6 text-white" />
             </button>
@@ -68,21 +47,23 @@ export const Navbar = ({
               <div className="flex items-center gap-2">
                 <button 
                   onClick={() => setActiveTab('dashboard')}
-                  className="text-lg font-bold text-white tracking-tight hover:text-cyan-400 transition-colors"
+                  className="text-lg font-black text-white tracking-tight hover:text-cyan-400 transition-colors"
                 >
                   PatientTriage<span className="text-cyan-400">.ai</span>
                 </button>
-                <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-950/80 text-emerald-300 border border-emerald-800/60">
+                <span className="hidden sm:flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-950/80 text-emerald-300 border border-emerald-800/60">
                   <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
                   ED LIVE
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400">Emergency Clinical Decision Support</p>
+              <p className="text-[11px] text-slate-400 font-medium truncate max-w-[180px] sm:max-w-xs">
+                {hospital?.name || `Hospital Facility: ${currentStaff?.hospital_id || 'DEMO001'}`}
+              </p>
             </div>
           </div>
 
-          {/* Role-Aware Navigation Tabs */}
-          <nav className="hidden md:flex items-center gap-1 bg-slate-950/60 p-1 rounded-xl border border-slate-800">
+          {/* Center Navigation Tabs */}
+          <nav className="hidden md:flex items-center gap-1 bg-slate-950/70 p-1 rounded-xl border border-slate-800/90">
             
             {/* Dashboard Tab */}
             <button
@@ -122,7 +103,7 @@ export const Navbar = ({
               <ShieldAlert className="w-3.5 h-3.5" />
               <span>Alerts</span>
               {unacknowledgedAlertCount > 0 && (
-                <span className="flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold bg-white text-rose-600 animate-pulse-subtle">
+                <span className="flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold bg-white text-rose-600 animate-pulse">
                   {unacknowledgedAlertCount}
                 </span>
               )}
@@ -143,7 +124,7 @@ export const Navbar = ({
               </button>
             )}
 
-            {/* Staff Management Tab (Admin & Director) */}
+            {/* Staff Management Tab */}
             {hasPermission('staff:view') && (
               <button
                 onClick={() => setActiveTab('staff')}
@@ -154,12 +135,12 @@ export const Navbar = ({
                 }`}
               >
                 <ShieldCheck className="w-3.5 h-3.5" />
-                <span>Staff & RBAC</span>
+                <span>Staff &amp; Roles</span>
               </button>
             )}
 
-            {/* Analytics Tab (Admin & Director) */}
-            {hasPermission('dashboard:view') && ['CLINICAL_DIRECTOR', 'HOSPITAL_ADMIN'].includes(currentStaff.role) && (
+            {/* Analytics Tab */}
+            {hasPermission('dashboard:view') && ['CLINICAL_DIRECTOR', 'HOSPITAL_ADMIN'].includes(currentStaff?.role) && (
               <button
                 onClick={() => setActiveTab('analytics')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
@@ -173,8 +154,8 @@ export const Navbar = ({
               </button>
             )}
 
-            {/* MLOps Governance Tab (Admin & Director) */}
-            {['CLINICAL_DIRECTOR', 'HOSPITAL_ADMIN'].includes(currentStaff.role) && (
+            {/* MLOps Governance Tab */}
+            {['CLINICAL_DIRECTOR', 'HOSPITAL_ADMIN'].includes(currentStaff?.role) && (
               <button
                 onClick={() => setActiveTab('mlops')}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
@@ -184,76 +165,53 @@ export const Navbar = ({
                 }`}
               >
                 <Cpu className="w-3.5 h-3.5 text-indigo-400" />
-                <span>MLOps &amp; Governance</span>
+                <span>MLOps</span>
               </button>
             )}
 
           </nav>
 
-          {/* Right Header Controls */}
-          <div className="flex items-center gap-2.5">
+          {/* Right Header User Profile & Action Controls */}
+          <div className="flex items-center gap-3">
             
             {/* Quick Register Patient Action */}
-            {hasPermission('patient:create') && (
+            {hasPermission('patient:create') && onOpenRegister && (
               <button
                 onClick={onOpenRegister}
-                className="hidden lg:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow transition-colors"
-                title="Register New Patient & Initiate Encounter"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow-md shadow-cyan-900/30 transition-all"
+                title="Register New Patient Intake"
               >
                 <UserPlus className="w-3.5 h-3.5" />
-                <span>Intake</span>
+                <span>+ Intake</span>
               </button>
             )}
 
-            {/* Hospital Tenant Selector */}
-            <div className="flex items-center gap-1.5 bg-slate-800/80 px-2.5 py-1.5 rounded-lg border border-slate-700 text-xs">
-              <Building2 className="w-3.5 h-3.5 text-cyan-400" />
-              <select
-                value={currentStaff.hospital_id}
-                onChange={(e) => switchHospital(e.target.value)}
-                className="bg-transparent text-slate-200 text-xs font-medium focus:outline-none cursor-pointer"
-                title="Hospital Tenant Boundary"
-              >
-                <option value="DEMO001" className="bg-slate-900 text-slate-200">Demo General (DEMO001)</option>
-                <option value="METRO002" className="bg-slate-900 text-slate-200">Metro Health (METRO002)</option>
-              </select>
+            {/* Logged-In User Profile Pill */}
+            <div className="flex items-center gap-2 bg-slate-950/80 px-3 py-1.5 rounded-xl border border-slate-800">
+              <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-cyan-600 to-indigo-600 flex items-center justify-center text-white text-[11px] font-bold">
+                {currentStaff?.name ? currentStaff.name.charAt(0) : 'U'}
+              </div>
+              <div className="hidden lg:block text-left">
+                <div className="text-xs font-bold text-slate-200 leading-tight truncate max-w-[130px]">
+                  {currentStaff?.name || 'Authorized Staff'}
+                </div>
+                <div className="text-[10px] text-slate-400 font-mono">
+                  ID: {currentStaff?.staff_id}
+                </div>
+              </div>
+              <div className="hidden sm:block">
+                {getRolePill(currentStaff?.role)}
+              </div>
             </div>
 
-            {/* Staff Account Switcher */}
-            <div className="flex items-center gap-1.5 bg-slate-800/80 px-2.5 py-1.5 rounded-lg border border-slate-700 text-xs">
-              <div className="w-2 h-2 rounded-full bg-emerald-400"></div>
-              <select
-                value={currentStaff.staff_id}
-                onChange={(e) => switchStaff(e.target.value)}
-                className="bg-transparent text-slate-200 text-xs font-medium focus:outline-none cursor-pointer max-w-[150px] truncate"
-                title="Active Clinician Session"
-              >
-                {DEMO_USERS.map((u) => (
-                  <option key={u.staff_id} value={u.staff_id} className="bg-slate-900 text-slate-200">
-                    {u.name} ({u.role_label})
-                  </option>
-                ))}
-              </select>
-              {getRolePill(currentStaff.role)}
-            </div>
-
-            {/* Login / Switch Persona Modal Trigger */}
+            {/* Real Logout Button */}
             <button
-              onClick={onOpenLogin}
-              className="p-1.5 text-slate-400 hover:text-cyan-400 hover:bg-slate-800 rounded-lg transition-colors"
-              title="Clinical Login / Persona Switcher"
+              onClick={logout}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-950/40 rounded-xl border border-slate-800 hover:border-rose-800/60 transition-all text-xs font-semibold"
+              title="Sign Out of Clinical Session"
             >
-              <LogIn className="w-4 h-4" />
-            </button>
-
-            {/* Re-seed Synthetic Demo Data Button */}
-            <button
-              onClick={handleSeedDemo}
-              disabled={seeding}
-              className="p-1.5 text-slate-400 hover:text-cyan-400 hover:bg-slate-800 rounded-lg transition-colors disabled:opacity-50"
-              title="Reset synthetic demo data (DEMO001 & METRO002)"
-            >
-              <RefreshCw className={`w-4 h-4 ${seeding ? 'animate-spin text-cyan-400' : ''}`} />
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Logout</span>
             </button>
 
           </div>
