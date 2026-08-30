@@ -15,7 +15,8 @@ import secrets
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__))))
 from models import (
     SessionLocal, Hospital, Staff, Role, Permission, Patient, TriageRecord, TriageAuditLog, AuditLog,
-    OverrideReasonEnum, ActionTypeEnum, seed_database, get_hash, Encounter, VitalSigns, TriageAssessment
+    OverrideReasonEnum, ActionTypeEnum, seed_database, get_hash, Encounter, VitalSigns, TriageAssessment,
+    AIRiskAssessment, AIRiskCategory, AIRiskStatus
 )
 
 from models import Patient, SessionLocal
@@ -23,6 +24,7 @@ from schemas import PatientCreate, PatientResponse
 # Add ai_engine to path so we can import it
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'ai_engine')))
 from triage_engine import TriageEngine
+from risk_assessment_service import ExistingTriageClassifierRiskAdapter, MissingClinicalData, ModelUnavailable, InvalidModelOutput, INPUT_SCHEMA_VERSION, PREDICTION_TARGET, PREDICTION_HORIZON
 
 # Centralized Permissions Constants
 class Permissions:
@@ -1509,6 +1511,68 @@ def get_waiting_queue():
     sorted_queue = sorted(mock_queue, key=lambda p: (p['triage_level'], -p['wait_time_mins']))
     
     return {"queue": sorted_queue}
+
+
+# ==========================================
+# TASK 7: ENCOUNTER-SCOPED AI RISK ASSESSMENT
+# ==========================================
+def _risk_encounter_or_404(db, encounter_id, hospital_id):
+    encounter = db.query(Encounter).filter(Encounter.encounter_id == encounter_id, Encounter.hospital_id == hospital_id).first()
+    if not encounter:
+        raise HTTPException(status_code=404, detail="Encounter not found.")
+    return encounter
+
+def _risk_response(item):
+    return {
+        "assessment_id": item.assessment_id, "model_name": item.model_name, "model_version": item.model_version,
+        "input_schema_version": item.input_schema_version, "prediction_target": item.prediction_target,
+        "prediction_horizon": item.prediction_horizon, "risk_score": item.risk_score,
+        "risk_category": item.risk_category.value if item.risk_category else None,
+        "status": item.status.value, "failure_code": item.failure_code,
+        "generated_at": item.generated_at.isoformat(), "vital_sign_ids": item.vital_sign_ids,
+        "triage_id": item.triage_id,
+    }
+
+@app.post("/api/v1/encounters/{encounter_id}/ai/risk-assessments")
+def generate_ai_risk_assessment(encounter_id: str, db: Session = Depends(get_db), current_user: dict = Depends(PermissionChecker(Permissions.AI_VIEW))):
+    """Generate a new, immutable development-model assessment; never changes human triage or disposition."""
+    encounter = _risk_encounter_or_404(db, encounter_id, current_user["hospital_id"])
+    vital = db.query(VitalSigns).filter(VitalSigns.encounter_id == encounter.id, VitalSigns.hospital_id == current_user["hospital_id"]).order_by(VitalSigns.recorded_at.desc()).first()
+    triage = db.query(TriageAssessment).filter(TriageAssessment.encounter_id == encounter.id, TriageAssessment.hospital_id == current_user["hospital_id"]).order_by(TriageAssessment.updated_at.desc()).first()
+    patient = db.query(Patient).filter(Patient.patient_id == encounter.patient_id, Patient.hospital_id == current_user["hospital_id"]).first()
+    clinical_input = {
+        "age": patient.age if patient else None, "gender": patient.gender if patient else None,
+        "history_available": bool(triage), "heart_rate": vital.heart_rate if vital else None,
+        "systolic_bp": vital.systolic_bp if vital else None, "respiratory_rate": vital.respiratory_rate if vital else None,
+        "spo2": vital.spo2 if vital else None, "gcs": vital.gcs if vital else None,
+    }
+    snapshot = {"schema_version": INPUT_SCHEMA_VERSION, "features": clinical_input, "vital_id": vital.vital_id if vital else None, "triage_id": triage.triage_id if triage else None}
+    try:
+        result = ExistingTriageClassifierRiskAdapter().predict(clinical_input)
+        record = AIRiskAssessment(assessment_id="PENDING", hospital_id=current_user["hospital_id"], encounter_id=encounter.id, model_name=result.model_name, model_version=result.model_version, input_schema_version=INPUT_SCHEMA_VERSION, prediction_target=PREDICTION_TARGET, prediction_horizon=PREDICTION_HORIZON, risk_score=result.score, risk_category=AIRiskCategory(result.category), status=AIRiskStatus.PENDING_CLINICIAN_REVIEW, input_snapshot=snapshot, vital_sign_ids=[vital.vital_id] if vital else [], triage_id=triage.triage_id if triage else None, created_by=current_user["staff_id"])
+    except MissingClinicalData:
+        record = AIRiskAssessment(assessment_id="PENDING", hospital_id=current_user["hospital_id"], encounter_id=encounter.id, model_name=ExistingTriageClassifierRiskAdapter.name, model_version=ExistingTriageClassifierRiskAdapter.version, input_schema_version=INPUT_SCHEMA_VERSION, prediction_target=PREDICTION_TARGET, prediction_horizon=PREDICTION_HORIZON, status=AIRiskStatus.UNAVAILABLE, input_snapshot=snapshot, vital_sign_ids=[vital.vital_id] if vital else [], triage_id=triage.triage_id if triage else None, failure_code="INSUFFICIENT_CLINICAL_DATA", created_by=current_user["staff_id"])
+    except ModelUnavailable:
+        record = AIRiskAssessment(assessment_id="PENDING", hospital_id=current_user["hospital_id"], encounter_id=encounter.id, model_name=ExistingTriageClassifierRiskAdapter.name, model_version=ExistingTriageClassifierRiskAdapter.version, input_schema_version=INPUT_SCHEMA_VERSION, prediction_target=PREDICTION_TARGET, prediction_horizon=PREDICTION_HORIZON, status=AIRiskStatus.FAILED, input_snapshot=snapshot, vital_sign_ids=[vital.vital_id] if vital else [], triage_id=triage.triage_id if triage else None, failure_code="MODEL_UNAVAILABLE", created_by=current_user["staff_id"])
+    except InvalidModelOutput:
+        record = AIRiskAssessment(assessment_id="PENDING", hospital_id=current_user["hospital_id"], encounter_id=encounter.id, model_name=ExistingTriageClassifierRiskAdapter.name, model_version=ExistingTriageClassifierRiskAdapter.version, input_schema_version=INPUT_SCHEMA_VERSION, prediction_target=PREDICTION_TARGET, prediction_horizon=PREDICTION_HORIZON, status=AIRiskStatus.FAILED, input_snapshot=snapshot, vital_sign_ids=[vital.vital_id] if vital else [], triage_id=triage.triage_id if triage else None, failure_code="INVALID_MODEL_OUTPUT", created_by=current_user["staff_id"])
+    db.add(record); db.flush(); record.assessment_id = f"AIR-{record.id:08d}"; db.commit(); db.refresh(record)
+    action = "Generated AI risk assessment" if record.status == AIRiskStatus.PENDING_CLINICIAN_REVIEW else "AI risk assessment unavailable"
+    log_audit(db, current_user["hospital_id"], current_user["staff_id"], current_user["role"], action, "ai_risk_assessment", record.assessment_id, f"Encounter: {encounter_id}; status: {record.status.value}; reason: {record.failure_code or 'none'}")
+    if record.status == AIRiskStatus.FAILED:
+        raise HTTPException(status_code=503, detail="AI risk assessment is temporarily unavailable.")
+    return _risk_response(record)
+
+@app.get("/api/v1/encounters/{encounter_id}/ai/risk-assessments")
+def get_ai_risk_assessments(encounter_id: str, db: Session = Depends(get_db), current_user: dict = Depends(PermissionChecker(Permissions.AI_VIEW))):
+    encounter = _risk_encounter_or_404(db, encounter_id, current_user["hospital_id"])
+    rows = db.query(AIRiskAssessment).filter(AIRiskAssessment.encounter_id == encounter.id, AIRiskAssessment.hospital_id == current_user["hospital_id"]).order_by(AIRiskAssessment.generated_at.desc()).all()
+    return [_risk_response(row) for row in rows]
+
+@app.get("/api/v1/encounters/{encounter_id}/ai/risk-assessments/latest")
+def get_latest_ai_risk_assessment(encounter_id: str, db: Session = Depends(get_db), current_user: dict = Depends(PermissionChecker(Permissions.AI_VIEW))):
+    records = get_ai_risk_assessments(encounter_id, db, current_user)
+    return records[0] if records else None
 
 @app.post("/api/override")
 def log_triage_override(audit_data: OverrideInput):

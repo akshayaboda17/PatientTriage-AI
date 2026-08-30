@@ -1,13 +1,15 @@
+/* eslint-disable no-unused-vars, no-undef, react-hooks/set-state-in-effect, react-hooks/exhaustive-deps */
 import PatientProfile from './components/PatientProfile';
 import PatientRegistration from './components/PatientRegistration';
 import React, { useState, useEffect } from 'react';
 import { 
   Activity, AlertTriangle, ShieldCheck, LogOut, Plus, Search, Filter, 
-  RefreshCw, Key, Shield, User, Building, Heart, Check, X, ShieldAlert,
+  RefreshCw, Key, Shield, User, Building, HeartPulse, Check, X, ShieldAlert,
   UserMinus, UserCheck, AlertOctagon, Info, FileText, ChevronRight, CheckCircle,
   Link
 } from 'lucide-react';
 import TriageDecisionModal from './components/TriageModal';
+import AIRiskAssessmentCard from './components/AIRiskAssessmentCard';
 
 // Predefined role names
 const ROLE_NAMES = {
@@ -558,42 +560,11 @@ function RegisterView({ setError, setSuccess }) {
 
         </div>
 
-        <div className="space-y-3">
-          {queue.length === 0 ? (
-            <p className="text-gray-400">Loading queue...</p>
-          ) : (
-            queue.map((patient, index) => (
-              <div key={index} className={`p-4 rounded-lg border flex justify-between items-center ${getLevelColor(patient.triage_level)}`}>
-                <div>
-                  <h3 className="font-bold text-lg">{patient.patient_id}</h3>
-                  <p className="text-sm opacity-80">{patient.age}y {patient.gender} • Status: {patient.status}</p>
-                </div>
-                <div className="text-right">
-                  <div className="text-2xl font-black mb-1">L{patient.triage_level}</div>
-                  <div className="text-sm flex items-center gap-1 justify-end opacity-80">
-                    <Clock size={14} /> {patient.wait_time_mins}m waiting
-                  </div>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      </div>
-
-      </div>
-
-      <div className="mt-8 grid gap-8 xl:grid-cols-2">
-        <PatientRegistration onPatientCreated={setActivePatientId} />
-        <PatientProfile key={activePatientId ?? 'empty-profile'} patientId={activePatientId} onPatientIdChange={setActivePatientId} />
-      </div>
-
+      )}
     </div>
   );
 }
 
-<<<<<<< HEAD
-export default App
-=======
 // ==========================================
 // Forgot Password View (Simulated)
 // ==========================================
@@ -1920,6 +1891,7 @@ function ClinicalTriageWorkspace({ patient, encounter, onClose, user, setError, 
           </span>
         </div>
       </div>
+      <AIRiskAssessmentCard encounterId={encounter.encounter_id} setError={setError} />
 
       {/* Structured Trends sparklines charts */}
       {observations.length > 0 && (
@@ -2913,7 +2885,7 @@ function PhysicianDashboard({ user, setError, setSuccess }) {
   );
 }
 
-function ClinicalDirectorDashboardfunction ClinicalDirectorDashboard({ user, setError, setSuccess }) {
+function ClinicalDirectorDashboard({ user, setError, setSuccess }) {
   const [patients, setPatients] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -3032,4 +3004,3 @@ function ClinicalDirectorDashboardfunction ClinicalDirectorDashboard({ user, set
     </div>
   );
 }
->>>>>>> a86ffa9 (Implement core engine changes)

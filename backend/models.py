@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Date, ForeignKey, Text, JSON, Table, create_engine, Enum, UniqueConstraint, text
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Date, ForeignKey, Text, JSON, Table, create_engine, Enum, UniqueConstraint, Index, text
 from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 import datetime
 import enum
@@ -18,6 +18,16 @@ class ActionTypeEnum(str, enum.Enum):
     ACCEPTED = "ACCEPTED"
     OVERRIDDEN = "OVERRIDDEN"
     AUTO_ESCALATED = "AUTO_ESCALATED"
+
+class AIRiskCategory(str, enum.Enum):
+    LOW = "LOW"
+    MODERATE = "MODERATE"
+    HIGH = "HIGH"
+
+class AIRiskStatus(str, enum.Enum):
+    PENDING_CLINICIAN_REVIEW = "PENDING_CLINICIAN_REVIEW"
+    UNAVAILABLE = "UNAVAILABLE"
+    FAILED = "FAILED"
 
 # Association table for Role-Permission mapping
 role_permissions = Table(
@@ -243,17 +253,41 @@ class TriageAssessment(Base):
     amended_by = Column(String(50), ForeignKey('staffs.staff_id'), nullable=True)
     amended_at = Column(DateTime, nullable=True)
 
+class AIRiskAssessment(Base):
+    __tablename__ = 'ai_risk_assessments'
+    __table_args__ = (Index('ix_ai_risk_history', 'hospital_id', 'encounter_id', 'generated_at'), Index('ix_ai_risk_model', 'model_name', 'model_version'))
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    assessment_id = Column(String(60), unique=True, nullable=False, index=True)
+    hospital_id = Column(String(50), ForeignKey('hospitals.hospital_id'), nullable=False, index=True)
+    encounter_id = Column(Integer, ForeignKey('encounters.id'), nullable=False, index=True)
+    model_name = Column(String(150), nullable=False)
+    model_version = Column(String(50), nullable=False)
+    input_schema_version = Column(String(50), nullable=False)
+    prediction_target = Column(String(250), nullable=False)
+    prediction_horizon = Column(String(100), nullable=False)
+    risk_score = Column(Float, nullable=True)
+    risk_category = Column(Enum(AIRiskCategory), nullable=True)
+    status = Column(Enum(AIRiskStatus), nullable=False, index=True)
+    input_snapshot = Column(JSON, nullable=True)
+    vital_sign_ids = Column(JSON, nullable=True)
+    triage_id = Column(Integer, nullable=True)
+    failure_code = Column(String(100), nullable=True)
+    generated_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False, index=True)
+    created_by = Column(String(50), ForeignKey('staffs.staff_id'), nullable=False)
+
 # Setup SQLite Database for the prototype
 engine = create_engine("sqlite:///./triage_database.db", connect_args={"check_same_thread": False})
 Base.metadata.create_all(bind=engine)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Migration script to add registration columns to patient database if they do not exist
+# Additive migration for legacy single-tenant prototype databases. Existing
+# records are retained and associated to the seeded demo hospital.
 with engine.begin() as connection:
     existing_columns = {
         row[1] for row in connection.execute(text("PRAGMA table_info(patients)"))
     }
     patient_column_migrations = {
+        "hospital_id": "VARCHAR(50)",
         "first_name": "VARCHAR(100)",
         "last_name": "VARCHAR(100)",
         "date_of_birth": "DATE",
@@ -264,6 +298,7 @@ with engine.begin() as connection:
     for column_name, column_type in patient_column_migrations.items():
         if column_name not in existing_columns:
             connection.execute(text(f"ALTER TABLE patients ADD COLUMN {column_name} {column_type}"))
+    connection.execute(text("UPDATE patients SET hospital_id = 'DEMO001' WHERE hospital_id IS NULL OR hospital_id = ''"))
 
 def get_hash(password: str) -> str:
     salt = bcrypt.gensalt()

@@ -18,7 +18,7 @@ const ESI_COLOR_MAP = {
   5: { bg: 'bg-blue-600', text: 'text-blue-100', name: 'ESI 5: Non-Urgent' },
 };
 
-export default function TriageDecisionModal({ recommendation, staffId, onClose, onSuccess }) {
+export default function TriageDecisionModal({ recommendation, onClose, onSuccess }) {
   const [isOverrideMode, setIsOverrideMode] = useState(false);
   const [selectedLevel, setSelectedLevel] = useState(recommendation.ai_suggested_level);
   const [overrideReason, setOverrideReason] = useState(OVERRIDE_REASONS[0]);
