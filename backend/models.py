@@ -1,10 +1,61 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Date, ForeignKey, Text, JSON, Table, create_engine, Enum, UniqueConstraint, text
-from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 import datetime
 import enum
-import bcrypt
+from typing import Optional, List, Dict, Any
+from sqlalchemy import (
+    Column, Integer, String, Float, Boolean, DateTime, Enum, 
+    ForeignKey, Text, JSON, Index, create_engine
+)
+from sqlalchemy.orm import declarative_base, sessionmaker, relationship
 
 Base = declarative_base()
+
+# ==========================================
+# Enums
+# ==========================================
+
+class StaffRoleEnum(str, enum.Enum):
+    HOSPITAL_ADMIN = "HOSPITAL_ADMIN"
+    EMERGENCY_PHYSICIAN = "EMERGENCY_PHYSICIAN"
+    TRIAGE_NURSE = "TRIAGE_NURSE"
+    STAFF_NURSE = "STAFF_NURSE"
+    EMERGENCY_TECHNICIAN = "EMERGENCY_TECHNICIAN"
+    CLINICAL_DIRECTOR = "CLINICAL_DIRECTOR"
+
+class EncounterStatusEnum(str, enum.Enum):
+    WAITING = "WAITING"
+    IN_TRIAGE = "IN_TRIAGE"
+    IN_TREATMENT = "IN_TREATMENT"
+    ADMITTED = "ADMITTED"
+    DISCHARGED = "DISCHARGED"
+    TRANSFERRED = "TRANSFERRED"
+
+class AlertSeverityEnum(str, enum.Enum):
+    CRITICAL = "CRITICAL"
+    HIGH = "HIGH"
+    MODERATE = "MODERATE"
+    INFORMATIONAL = "INFORMATIONAL"
+
+class AlertStatusEnum(str, enum.Enum):
+    UNACKNOWLEDGED = "UNACKNOWLEDGED"
+    ACKNOWLEDGED = "ACKNOWLEDGED"
+    RESOLVED = "RESOLVED"
+    DISMISSED = "DISMISSED"
+
+class DetectionSourceEnum(str, enum.Enum):
+    RULE_BASED = "RULE_BASED"
+    ML_BASED = "ML_BASED"
+    COMBINED = "COMBINED"
+
+class AIRiskCategoryEnum(str, enum.Enum):
+    LOW = "LOW"
+    MODERATE = "MODERATE"
+    HIGH = "HIGH"
+    CRITICAL = "CRITICAL"
+
+class ActionTypeEnum(str, enum.Enum):
+    ACCEPTED = "ACCEPTED"
+    OVERRIDDEN = "OVERRIDDEN"
+    AUTO_ESCALATED = "AUTO_ESCALATED"
 
 class OverrideReasonEnum(str, enum.Enum):
     CLINICAL_INTUITION = "Clinical Intuition / Gestalt"
@@ -14,98 +65,122 @@ class OverrideReasonEnum(str, enum.Enum):
     UNVERIFIED_EHR_CORRECTION = "EHR / History Discrepancy"
     OTHER = "Other (Mandatory Detailed Note)"
 
-class ActionTypeEnum(str, enum.Enum):
-    ACCEPTED = "ACCEPTED"
+class AIAgreementEnum(str, enum.Enum):
+    AGREED = "AGREED"
     OVERRIDDEN = "OVERRIDDEN"
-    AUTO_ESCALATED = "AUTO_ESCALATED"
 
-# Association table for Role-Permission mapping
-role_permissions = Table(
-    'role_permissions',
-    Base.metadata,
-    Column('role_id', String(50), ForeignKey('roles.role_id'), primary_key=True),
-    Column('permission_id', String(50), ForeignKey('permissions.permission_id'), primary_key=True)
-)
+class ClinicalDecisionEnum(str, enum.Enum):
+    CONTINUE_EVALUATION = "CONTINUE_EVALUATION"
+    ESCALATE_CARE = "ESCALATE_CARE"
+    ADMIT_INPATIENT = "ADMIT_INPATIENT"
+    DISCHARGE_HOME = "DISCHARGE_HOME"
+    TRANSFER_FACILITY = "TRANSFER_FACILITY"
+    OBSERVATION_UNIT = "OBSERVATION_UNIT"
+    OTHER = "OTHER"
+
+class OverrideReasonCategoryEnum(str, enum.Enum):
+    CLINICAL_CONTEXT_NOT_IN_MODEL = "Clinical context not represented in model input"
+    PHYSICAL_EXAM_FINDINGS = "Physical examination findings"
+    RECENT_INTERVENTION = "Recent clinical treatment / intervention response"
+    DIAGNOSTIC_RESULTS = "Point-of-care diagnostics / lab discrepancy"
+    CLINICAL_INTUITION_GESTALT = "Clinical intuition & Gestalt assessment"
+    OTHER = "Other (Mandatory Detailed Clinical Note)"
+
+# ==========================================
+# Task 11: Audit Trail Enums
+# ==========================================
+
+class ActorTypeEnum(str, enum.Enum):
+    HUMAN = "HUMAN"
+    SYSTEM = "SYSTEM"
+    AI_SYSTEM = "AI_SYSTEM"
+
+class AuditResultEnum(str, enum.Enum):
+    SUCCESS = "SUCCESS"
+    FAILURE = "FAILURE"
+    DENIED = "DENIED"
+
+# ==========================================
+# Core Hospital & Staff (Tenant & RBAC)
+# ==========================================
 
 class Hospital(Base):
     __tablename__ = 'hospitals'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    hospital_id = Column(String(50), unique=True, index=True, nullable=False) # e.g. DEMO001, HOSP_A
+    hospital_code = Column(String(50), unique=True, nullable=False, index=True) # e.g. DEMO001
     name = Column(String(200), nullable=False)
-    hospital_type = Column(String(100), nullable=False)
-    address = Column(String(200), nullable=False)
-    city = Column(String(100), nullable=False)
-    state = Column(String(100), nullable=False)
-    country = Column(String(100), nullable=False)
-    postal_code = Column(String(20), nullable=False)
-    registration_number = Column(String(100), nullable=False)
-    emergency_department_available = Column(Boolean, default=True)
-    ed_capacity = Column(Integer, default=50)
-    verification_status = Column(String(50), default="VERIFIED") # PENDING, VERIFIED, REJECTED, SUSPENDED
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+    address = Column(String(300), nullable=True)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
 
-class Permission(Base):
-    __tablename__ = 'permissions'
+    staff_members = relationship("Staff", back_populates="hospital", cascade="all, delete-orphan")
+    patients = relationship("Patient", back_populates="hospital", cascade="all, delete-orphan")
+    encounters = relationship("EDEncounter", back_populates="hospital", cascade="all, delete-orphan")
+    alerts = relationship("ClinicalAlert", back_populates="hospital", cascade="all, delete-orphan")
+    physician_assessments = relationship("PhysicianAssessment", back_populates="hospital", cascade="all, delete-orphan")
 
-    permission_id = Column(String(50), primary_key=True) # e.g., patient:create
-    description = Column(String(200), nullable=True)
-
-class Role(Base):
-    __tablename__ = 'roles'
-
-    role_id = Column(String(50), primary_key=True) # e.g. EMERGENCY_PHYSICIAN
-    name = Column(String(100), nullable=False)
-    description = Column(String(200), nullable=True)
-
-    permissions = relationship("Permission", secondary=role_permissions, backref="roles")
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "hospital_code": self.hospital_code,
+            "name": self.name,
+            "address": self.address,
+            "is_active": self.is_active,
+            "created_at": self.created_at.isoformat() if self.created_at else None
+        }
 
 class Staff(Base):
-    __tablename__ = 'staffs'
-    __table_args__ = (
-        UniqueConstraint('hospital_id', 'staff_id', name='_hospital_staff_uc'),
-    )
+    __tablename__ = 'staff'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    staff_id = Column(String(50), index=True, nullable=False) # e.g. DOC001
-    hospital_id = Column(String(50), ForeignKey('hospitals.hospital_id'), nullable=False)
-    full_name = Column(String(100), nullable=False)
-    employee_id = Column(String(50), nullable=False)
-    official_email = Column(String(100), unique=True, index=True, nullable=False)
-    phone_number = Column(String(50), nullable=False)
-    department = Column(String(100), nullable=False)
-    designation = Column(String(100), nullable=False)
-    professional_registration_number = Column(String(100), nullable=True)
-    years_of_experience = Column(Integer, nullable=True)
-    role_id = Column(String(50), ForeignKey('roles.role_id'), nullable=False)
-    password_hash = Column(String(200), nullable=True)
-    status = Column(String(50), default="PENDING") # ACTIVE, PENDING, SUSPENDED, DEACTIVATED
-    activation_token = Column(String(100), unique=True, nullable=True, index=True)
-    activation_token_expires_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
-    last_login_at = Column(DateTime, nullable=True)
+    hospital_id = Column(String(50), ForeignKey('hospitals.hospital_code'), nullable=False, index=True)
+    staff_id = Column(String(50), unique=True, nullable=False, index=True) # e.g. DOC001, NUR001
+    name = Column(String(150), nullable=False)
+    email = Column(String(150), nullable=False)
+    role = Column(Enum(StaffRoleEnum), nullable=False)
+    password_hash = Column(String(200), nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+    hospital = relationship("Hospital", back_populates="staff_members")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "hospital_id": self.hospital_id,
+            "staff_id": self.staff_id,
+            "name": self.name,
+            "email": self.email,
+            "role": self.role.value,
+            "is_active": self.is_active,
+            "created_at": self.created_at.isoformat() if self.created_at else None
+        }
+
+# ==========================================
+# Clinical Entities: Patient & ED Encounter
+# ==========================================
 
 class Patient(Base):
     __tablename__ = 'patients'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    patient_id = Column(String(50), unique=True, index=True, nullable=False) # e.g. PT-A100
-    hospital_id = Column(String(50), ForeignKey('hospitals.hospital_id'), nullable=False)
-    first_name = Column(String(100), nullable=False, default="")
-    last_name = Column(String(100), nullable=False, default="")
-    date_of_birth = Column(Date, nullable=True)
-    gender = Column(String(50), nullable=True)
-    contact_info = Column(String(255), nullable=True)
-    emergency_contact = Column(String(255), nullable=True)
-    known_allergies = Column(String, nullable=True)
+    hospital_id = Column(String(50), ForeignKey('hospitals.hospital_code'), nullable=False, index=True)
+    patient_id = Column(String(50), unique=True, nullable=False, index=True) # e.g. PT-DEMO-001
+    mrn = Column(String(50), nullable=True)
+    first_name = Column(String(100), nullable=False)
+    last_name = Column(String(100), nullable=False)
+    age = Column(Float, nullable=False)
+    gender = Column(String(20), nullable=False)
+    phone = Column(String(50), nullable=True)
+    allergies = Column(Text, nullable=True)
+    medical_history = Column(Text, nullable=True)
+    arrival_mode = Column(String(50), nullable=True) # Walk-in, Ambulance, Helicopter
+    created_by = Column(String(50), nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 
-    # Fields retained from the initial triage prototype
-    age = Column(Float, nullable=True)
-    arrival_mode = Column(String(100), nullable=True)
-    
-    # Vitals
+    # Legacy fields preserved for backward compatibility
     hr = Column(Integer, nullable=True)
     sbp = Column(Integer, nullable=True)
     dbp = Column(Integer, nullable=True)
@@ -115,419 +190,508 @@ class Patient(Base):
     gcs = Column(Integer, nullable=True)
     pain_score = Column(Integer, nullable=True)
     history_available = Column(Boolean, default=False)
-    
-    # Decision outputs
     triage_level = Column(Integer, nullable=True)
-    override_reason = Column(String(100), nullable=True)
-    created_by = Column(String(50), ForeignKey('staffs.staff_id'), nullable=True)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    override_reason = Column(String, nullable=True)
 
-class TriageRecord(Base):
-    __tablename__ = 'triage_records'
+    hospital = relationship("Hospital", back_populates="patients")
+    encounters = relationship("EDEncounter", back_populates="patient", cascade="all, delete-orphan")
+    alerts = relationship("ClinicalAlert", back_populates="patient", cascade="all, delete-orphan")
 
-    triage_id = Column(String(100), primary_key=True) # e.g. TR-PT-A100-timestamp
-    patient_id = Column(String(50), ForeignKey('patients.patient_id'), nullable=False)
-    hospital_id = Column(String(50), ForeignKey('hospitals.hospital_id'), nullable=False)
-    ai_suggested_level = Column(Integer, nullable=False)
-    ai_confidence_score = Column(Float, nullable=False)
-    clinician_assigned_level = Column(Integer, nullable=True) # None if accepted without override
-    action_type = Column(String(50), nullable=False) # ACCEPTED, OVERRIDDEN, AUTO_ESCALATED
-    override_reason = Column(String(200), nullable=True)
-    clinical_notes = Column(Text, nullable=True)
-    created_by = Column(String(50), ForeignKey('staffs.staff_id'), nullable=False)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "hospital_id": self.hospital_id,
+            "patient_id": self.patient_id,
+            "mrn": self.mrn,
+            "first_name": self.first_name,
+            "last_name": self.last_name,
+            "full_name": f"{self.first_name} {self.last_name}",
+            "age": self.age,
+            "gender": self.gender,
+            "phone": self.phone,
+            "allergies": self.allergies,
+            "medical_history": self.medical_history,
+            "arrival_mode": self.arrival_mode,
+            "created_at": self.created_at.isoformat() if self.created_at else None
+        }
 
-class TriageAuditLog(Base):
-    __tablename__ = 'triage_audit_logs'
+class EDEncounter(Base):
+    __tablename__ = 'ed_encounters'
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    patient_id = Column(String(50), ForeignKey('patients.patient_id'), nullable=False)
-    hospital_id = Column(String(50), ForeignKey('hospitals.hospital_id'), nullable=False)
-    staff_id = Column(String(50), ForeignKey('staffs.staff_id'), nullable=False)
-    timestamp = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    hospital_id = Column(String(50), ForeignKey('hospitals.hospital_code'), nullable=False, index=True)
+    patient_id = Column(String(50), ForeignKey('patients.patient_id'), nullable=False, index=True)
+    encounter_id = Column(String(50), unique=True, nullable=False, index=True) # e.g. ENC-DEMO-001
+    
+    arrival_time = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    arrival_mode = Column(String(50), default="Walk-in")
+    chief_complaint = Column(String(255), nullable=False)
+    status = Column(Enum(EncounterStatusEnum), default=EncounterStatusEnum.WAITING, nullable=False, index=True)
+    
+    assigned_nurse_id = Column(String(50), nullable=True)
+    assigned_doctor_id = Column(String(50), nullable=True)
+    bed_number = Column(String(30), nullable=True)
+    
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    hospital = relationship("Hospital", back_populates="encounters")
+    patient = relationship("Patient", back_populates="encounters")
+    observations = relationship("ClinicalObservation", back_populates="encounter", cascade="all, delete-orphan", order_by="ClinicalObservation.timestamp.asc()")
+    triage_assessments = relationship("TriageAssessment", back_populates="encounter", cascade="all, delete-orphan")
+    ai_risk_assessments = relationship("AIRiskAssessment", back_populates="encounter", cascade="all, delete-orphan")
+    alerts = relationship("ClinicalAlert", back_populates="encounter", cascade="all, delete-orphan")
+    physician_assessments = relationship("PhysicianAssessment", back_populates="encounter", cascade="all, delete-orphan", order_by="PhysicianAssessment.created_at.desc()")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "hospital_id": self.hospital_id,
+            "patient_id": self.patient_id,
+            "encounter_id": self.encounter_id,
+            "arrival_time": self.arrival_time.isoformat() if self.arrival_time else None,
+            "arrival_mode": self.arrival_mode,
+            "chief_complaint": self.chief_complaint,
+            "status": self.status.value,
+            "assigned_nurse_id": self.assigned_nurse_id,
+            "assigned_doctor_id": self.assigned_doctor_id,
+            "bed_number": self.bed_number,
+            "created_at": self.created_at.isoformat() if self.created_at else None
+        }
+
+# ==========================================
+# Clinical Intake & Longitudinal Observations
+# ==========================================
+
+class TriageAssessment(Base):
+    __tablename__ = 'triage_assessments'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    hospital_id = Column(String(50), nullable=False, index=True)
+    patient_id = Column(String(50), nullable=False, index=True)
+    encounter_id = Column(String(50), ForeignKey('ed_encounters.encounter_id'), nullable=False, index=True)
+    
+    triage_level = Column(Integer, nullable=False) # 1 (Resuscitation) to 5 (Non-urgent) ESI
+    acuity_category = Column(String(50), nullable=False) # Immediate, Emergent, Urgent, Semi-urgent, Non-urgent
+    chief_complaint = Column(String(255), nullable=True)
+    pain_score = Column(Integer, nullable=True)
+    mobility = Column(String(50), nullable=True) # Ambulatory, Wheelchair, Stretcher
+    assessed_by = Column(String(50), nullable=False)
+    assessed_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    notes = Column(Text, nullable=True)
+
+    encounter = relationship("EDEncounter", back_populates="triage_assessments")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "hospital_id": self.hospital_id,
+            "patient_id": self.patient_id,
+            "encounter_id": self.encounter_id,
+            "triage_level": self.triage_level,
+            "acuity_category": self.acuity_category,
+            "chief_complaint": self.chief_complaint,
+            "pain_score": self.pain_score,
+            "mobility": self.mobility,
+            "assessed_by": self.assessed_by,
+            "assessed_at": self.assessed_at.isoformat() if self.assessed_at else None,
+            "notes": self.notes
+        }
+
+class ClinicalObservation(Base):
+    __tablename__ = 'clinical_observations'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    hospital_id = Column(String(50), nullable=False, index=True)
+    patient_id = Column(String(50), nullable=False, index=True)
+    encounter_id = Column(String(50), ForeignKey('ed_encounters.encounter_id'), nullable=False, index=True)
+    
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow, nullable=False, index=True)
+    hr = Column(Integer, nullable=False)          # Heart Rate (bpm)
+    sbp = Column(Integer, nullable=False)         # Systolic BP (mmHg)
+    dbp = Column(Integer, nullable=True)          # Diastolic BP (mmHg)
+    rr = Column(Integer, nullable=False)          # Respiratory Rate (breaths/min)
+    spo2 = Column(Integer, nullable=False)        # SpO2 Oxygen Saturation (%)
+    temp = Column(Float, nullable=True)           # Body Temp (Celsius)
+    gcs = Column(Integer, default=15, nullable=False) # Glasgow Coma Scale (3-15)
+    pain_score = Column(Integer, default=0, nullable=True) # Pain (0-10)
+    
+    recorded_by = Column(String(50), nullable=False) # Staff ID
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+    # Observation Correction Traceability (Task 11)
+    is_corrected = Column(Boolean, default=False, nullable=False)
+    correction_reason = Column(String(255), nullable=True)
+    corrected_by = Column(String(50), nullable=True)
+    corrected_at = Column(DateTime, nullable=True)
+    original_values_json = Column(JSON, nullable=True)
+
+    encounter = relationship("EDEncounter", back_populates="observations")
+
+    # Composite index for fast longitudinal trend queries
+    __table_args__ = (
+        Index('idx_encounter_timestamp', 'encounter_id', 'timestamp'),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "hospital_id": self.hospital_id,
+            "patient_id": self.patient_id,
+            "encounter_id": self.encounter_id,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+            "hr": self.hr,
+            "sbp": self.sbp,
+            "dbp": self.dbp,
+            "rr": self.rr,
+            "spo2": self.spo2,
+            "temp": self.temp,
+            "gcs": self.gcs,
+            "pain_score": self.pain_score,
+            "recorded_by": self.recorded_by,
+            "notes": self.notes,
+            "is_corrected": self.is_corrected,
+            "correction_reason": self.correction_reason,
+            "corrected_by": self.corrected_by,
+            "corrected_at": self.corrected_at.isoformat() if self.corrected_at else None,
+            "original_values": self.original_values_json
+        }
+
+# ==========================================
+# Task 7 & 8: AI Risk Assessment & Explainability
+# ==========================================
+
+class AIRiskAssessment(Base):
+    __tablename__ = 'ai_risk_assessments'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    assessment_id = Column(String(100), unique=True, nullable=True, index=True) # e.g. AI-ENC-100-01
+    hospital_id = Column(String(50), nullable=False, index=True)
+    patient_id = Column(String(50), nullable=False, index=True)
+    encounter_id = Column(String(50), ForeignKey('ed_encounters.encounter_id'), nullable=False, index=True)
+    observation_id = Column(Integer, ForeignKey('clinical_observations.id'), nullable=True)
+    
+    risk_score = Column(Float, nullable=False) # 0.0 - 100.0
+    risk_category = Column(Enum(AIRiskCategoryEnum), nullable=False)
+    predicted_triage_level = Column(Integer, nullable=False)
+    confidence_score = Column(Float, nullable=False)
+    shock_index = Column(Float, nullable=True)
+    qsofa = Column(Integer, nullable=True)
+    model_name = Column(String(100), default="PatientTriage Risk Model", nullable=True)
+    model_version = Column(String(50), default="1.0.0", nullable=False)
+    assessed_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+    encounter = relationship("EDEncounter", back_populates="ai_risk_assessments")
+    explanation = relationship("AIExplanation", back_populates="risk_assessment", uselist=False, cascade="all, delete-orphan")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "assessment_id": self.assessment_id,
+            "hospital_id": self.hospital_id,
+            "patient_id": self.patient_id,
+            "encounter_id": self.encounter_id,
+            "risk_score": self.risk_score,
+            "risk_category": self.risk_category.value,
+            "predicted_triage_level": self.predicted_triage_level,
+            "confidence_score": self.confidence_score,
+            "shock_index": self.shock_index,
+            "qsofa": self.qsofa,
+            "model_name": self.model_name,
+            "model_version": self.model_version,
+            "assessed_at": self.assessed_at.isoformat() if self.assessed_at else None
+        }
+
+class AIExplanation(Base):
+    __tablename__ = 'ai_explanations'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    hospital_id = Column(String(50), nullable=False, index=True)
+    patient_id = Column(String(50), nullable=False, index=True)
+    encounter_id = Column(String(50), nullable=False, index=True)
+    risk_assessment_id = Column(Integer, ForeignKey('ai_risk_assessments.id'), nullable=False)
+    
+    explanation_method = Column(String(50), default="SHAP (TreeExplainer)", nullable=False)
+    top_features = Column(JSON, nullable=False) # list of {feature, importance, impact, value}
+    summary = Column(Text, nullable=False)
+    generated_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+
+    risk_assessment = relationship("AIRiskAssessment", back_populates="explanation")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "risk_assessment_id": self.risk_assessment_id,
+            "explanation_method": self.explanation_method,
+            "top_features": self.top_features,
+            "summary": self.summary,
+            "generated_at": self.generated_at.isoformat() if self.generated_at else None
+        }
+
+# ==========================================
+# Task 9: Clinical Alert & Deterioration Model
+# ==========================================
+
+class ClinicalAlert(Base):
+    __tablename__ = 'clinical_alerts'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    alert_id = Column(String(50), unique=True, nullable=False, index=True) # e.g. ALERT-8921
+    hospital_id = Column(String(50), ForeignKey('hospitals.hospital_code'), nullable=False, index=True)
+    patient_id = Column(String(50), ForeignKey('patients.patient_id'), nullable=False, index=True)
+    encounter_id = Column(String(50), ForeignKey('ed_encounters.encounter_id'), nullable=False, index=True)
+    
+    alert_type = Column(String(100), default="POTENTIAL_DETERIORATION", nullable=False, index=True)
+    severity = Column(Enum(AlertSeverityEnum), nullable=False, index=True)
+    status = Column(Enum(AlertStatusEnum), default=AlertStatusEnum.UNACKNOWLEDGED, nullable=False, index=True)
+    
+    detected_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False, index=True)
+    
+    # Acknowledgment Tracking
+    acknowledged_at = Column(DateTime, nullable=True)
+    acknowledged_by_id = Column(String(50), nullable=True)
+    acknowledged_by_name = Column(String(150), nullable=True)
+    acknowledged_by_role = Column(String(50), nullable=True)
+    
+    # Resolution Tracking
+    resolved_at = Column(DateTime, nullable=True)
+    resolved_by_id = Column(String(50), nullable=True)
+    resolved_by_name = Column(String(150), nullable=True)
+    resolved_by_role = Column(String(50), nullable=True)
+    resolution_reason = Column(Text, nullable=True)
+    
+    # Dismissal Tracking
+    dismissed_at = Column(DateTime, nullable=True)
+    dismissed_by_id = Column(String(50), nullable=True)
+    dismissed_by_name = Column(String(150), nullable=True)
+    dismissed_by_role = Column(String(50), nullable=True)
+    dismissal_reason = Column(Text, nullable=True)
+    
+    # Detection Metadata & Evidence
+    detection_source = Column(Enum(DetectionSourceEnum), default=DetectionSourceEnum.RULE_BASED, nullable=False)
+    detection_rule_id = Column(String(100), nullable=False) # e.g. RULE-DET-COMPOSITE-01
+    detection_version = Column(String(50), default="1.0", nullable=False)
+    
+    summary = Column(Text, nullable=False)
+    evidence = Column(JSON, nullable=False) # Structured array of signals: feature, prev, curr, change, rate, unit
+    
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    hospital = relationship("Hospital", back_populates="alerts")
+    patient = relationship("Patient", back_populates="alerts")
+    encounter = relationship("EDEncounter", back_populates="alerts")
+
+    # Efficient querying indexes
+    __table_args__ = (
+        Index('idx_alert_hosp_status', 'hospital_id', 'status'),
+        Index('idx_alert_enc_status', 'encounter_id', 'status'),
+        Index('idx_alert_hosp_severity', 'hospital_id', 'severity'),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "alert_id": self.alert_id,
+            "hospital_id": self.hospital_id,
+            "patient_id": self.patient_id,
+            "encounter_id": self.encounter_id,
+            "alert_type": self.alert_type,
+            "severity": self.severity.value,
+            "status": self.status.value,
+            "detected_at": self.detected_at.isoformat() if self.detected_at else None,
+            "acknowledged_at": self.acknowledged_at.isoformat() if self.acknowledged_at else None,
+            "acknowledged_by_id": self.acknowledged_by_id,
+            "acknowledged_by_name": self.acknowledged_by_name,
+            "acknowledged_by_role": self.acknowledged_by_role,
+            "resolved_at": self.resolved_at.isoformat() if self.resolved_at else None,
+            "resolved_by_id": self.resolved_by_id,
+            "resolved_by_name": self.resolved_by_name,
+            "resolved_by_role": self.resolved_by_role,
+            "resolution_reason": self.resolution_reason,
+            "dismissed_at": self.dismissed_at.isoformat() if self.dismissed_at else None,
+            "dismissed_by_id": self.dismissed_by_id,
+            "dismissed_by_name": self.dismissed_by_name,
+            "dismissed_by_role": self.dismissed_by_role,
+            "dismissal_reason": self.dismissal_reason,
+            "detection_source": self.detection_source.value,
+            "detection_rule_id": self.detection_rule_id,
+            "detection_version": self.detection_version,
+            "summary": self.summary,
+            "evidence": self.evidence,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
+
+# ==========================================
+# Task 10: Physician Review & Clinical Decision (Human-in-the-Loop)
+# ==========================================
+
+class PhysicianAssessment(Base):
+    __tablename__ = 'physician_assessments'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    assessment_id = Column(String(100), unique=True, nullable=False, index=True) # e.g. PA-ENC-DEMO-001-xxxx
+    hospital_id = Column(String(50), ForeignKey('hospitals.hospital_code'), nullable=False, index=True)
+    encounter_id = Column(String(50), ForeignKey('ed_encounters.encounter_id'), nullable=False, index=True)
+    patient_id = Column(String(50), ForeignKey('patients.patient_id'), nullable=False, index=True)
+    
+    physician_id = Column(String(50), ForeignKey('staff.staff_id'), nullable=False, index=True)
+    physician_name = Column(String(150), nullable=False)
+    physician_role = Column(String(50), nullable=False)
+    
+    # Reference to original AI assessment at time of review (preserved immutably)
+    ai_assessment_id = Column(String(100), nullable=True)
+    ai_risk_category_at_review = Column(String(50), nullable=True)
+    ai_risk_score_at_review = Column(Float, nullable=True)
+    
+    # Physician evaluation
+    clinical_assessment = Column(Text, nullable=True) # Clinician interpretation
+    ai_agreement = Column(Enum(AIAgreementEnum), default=AIAgreementEnum.AGREED, nullable=False)
+    clinician_assigned_risk = Column(String(50), nullable=True) # e.g. LOW, MODERATE, HIGH, CRITICAL
+    override_reason = Column(String(255), nullable=True) # Mandatory when OVERRIDDEN
+    clinical_notes = Column(Text, nullable=True)
+    
+    # Structured clinical decision (what happens next)
+    clinical_decision = Column(Enum(ClinicalDecisionEnum), default=ClinicalDecisionEnum.CONTINUE_EVALUATION, nullable=False)
+    
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False, index=True)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    __table_args__ = (
+        Index('idx_phys_assess_hosp_enc', 'hospital_id', 'encounter_id'),
+        Index('idx_phys_assess_enc_time', 'encounter_id', 'created_at'),
+    )
+
+    hospital = relationship("Hospital", back_populates="physician_assessments")
+    encounter = relationship("EDEncounter", back_populates="physician_assessments")
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "assessment_id": self.assessment_id,
+            "hospital_id": self.hospital_id,
+            "encounter_id": self.encounter_id,
+            "patient_id": self.patient_id,
+            "physician_id": self.physician_id,
+            "physician_name": self.physician_name,
+            "physician_role": self.physician_role,
+            "ai_assessment_id": self.ai_assessment_id,
+            "ai_risk_category_at_review": self.ai_risk_category_at_review,
+            "ai_risk_score_at_review": self.ai_risk_score_at_review,
+            "clinical_assessment": self.clinical_assessment,
+            "ai_agreement": self.ai_agreement.value if hasattr(self.ai_agreement, 'value') else self.ai_agreement,
+            "clinician_assigned_risk": self.clinician_assigned_risk,
+            "override_reason": self.override_reason,
+            "clinical_notes": self.clinical_notes,
+            "clinical_decision": self.clinical_decision.value if hasattr(self.clinical_decision, 'value') else self.clinical_decision,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+        }
+
+# ==========================================
+# Audit Trail (Tamper-Resistant Log)
+# ==========================================
+
+class AuditLog(Base):
+    __tablename__ = 'audit_logs'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    event_id = Column(String(100), unique=True, nullable=False, index=True) # e.g. AUD-2026-000001
+    hospital_id = Column(String(50), nullable=False, index=True)
+    
+    # Actor details
+    staff_id = Column(String(50), nullable=False, index=True) # actor_id
+    staff_name = Column(String(150), nullable=True)           # actor_name
+    role = Column(String(50), nullable=False, index=True)      # actor_role
+    actor_type = Column(Enum(ActorTypeEnum), default=ActorTypeEnum.HUMAN, nullable=False, index=True)
+
+    # Action & Target Entity
+    action = Column(String(100), nullable=False, index=True) # e.g. PATIENT_CREATED, AI_OVERRIDE_RECORDED
+    entity_type = Column(String(50), nullable=False, index=True) # e.g. PATIENT, ENCOUNTER, AI_ASSESSMENT
+    entity_id = Column(String(100), nullable=False, index=True)
+    
+    # Clinical Context References
+    patient_id = Column(String(50), nullable=True, index=True)
+    encounter_id = Column(String(50), nullable=True, index=True)
+
+    # Event Result & Timestamp
+    result = Column(Enum(AuditResultEnum), default=AuditResultEnum.SUCCESS, nullable=False, index=True)
+    timestamp = Column(DateTime, default=datetime.datetime.utcnow, nullable=False, index=True)
+    
+    # Safe structured metadata (no raw PHI, no passwords, no tokens)
+    metadata_json = Column(JSON, nullable=True)
+
+    __table_args__ = (
+        Index('idx_audit_hosp_time', 'hospital_id', 'timestamp'),
+        Index('idx_audit_hosp_action', 'hospital_id', 'action'),
+        Index('idx_audit_hosp_enc', 'hospital_id', 'encounter_id'),
+        Index('idx_audit_hosp_actor', 'hospital_id', 'staff_id'),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "event_id": self.event_id,
+            "hospital_id": self.hospital_id,
+            "actor_id": self.staff_id,
+            "actor_name": self.staff_name or self.staff_id,
+            "actor_role": self.role,
+            "actor_type": self.actor_type.value if hasattr(self.actor_type, 'value') else self.actor_type,
+            "action": self.action,
+            "entity_type": self.entity_type,
+            "entity_id": self.entity_id,
+            "patient_id": self.patient_id,
+            "encounter_id": self.encounter_id,
+            "result": self.result.value if hasattr(self.result, 'value') else self.result,
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
+            "metadata": self.metadata_json,
+            # Backward compatibility aliases
+            "staff_id": self.staff_id,
+            "staff_name": self.staff_name,
+            "role": self.role
+        }
+
+# Legacy TriageAuditLog model preserved for backward compatibility
+class TriageAuditLog(Base):
+    __tablename__ = "triage_audit_logs"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    patient_id = Column(String(50), nullable=False, index=True)
+    staff_id = Column(String(50), nullable=False, index=True)
+    timestamp = Column(DateTime(timezone=True), default=datetime.datetime.utcnow, nullable=False)
+    
     ai_suggested_level = Column(Integer, nullable=False)
     ai_confidence_score = Column(Float, nullable=False)
     clinician_assigned_level = Column(Integer, nullable=False)
+    
     action_type = Column(Enum(ActionTypeEnum), nullable=False)
     override_reason = Column(Enum(OverrideReasonEnum), nullable=True)
     clinical_notes = Column(Text, nullable=True)
-    top_3_drivers = Column(JSON, nullable=True)
+    top_3_drivers = Column(JSON, nullable=False)
 
     def to_dict(self):
         return {
             "id": self.id,
             "patient_id": self.patient_id,
-            "hospital_id": self.hospital_id,
             "staff_id": self.staff_id,
-            "timestamp": self.timestamp.isoformat(),
+            "timestamp": self.timestamp.isoformat() if self.timestamp else None,
             "ai_suggested_level": self.ai_suggested_level,
             "ai_confidence_score": self.ai_confidence_score,
             "clinician_assigned_level": self.clinician_assigned_level,
-            "action_type": self.action_type.value,
-            "override_reason": self.override_reason.value if self.override_reason else None,
+            "action_type": self.action_type.value if hasattr(self.action_type, 'value') else self.action_type,
+            "override_reason": self.override_reason.value if self.override_reason and hasattr(self.override_reason, 'value') else self.override_reason,
             "clinical_notes": self.clinical_notes,
             "top_3_drivers": self.top_3_drivers
         }
 
-class AuditLog(Base):
-    __tablename__ = 'audit_logs'
+# ==========================================
+# Database Connection Setup
+# ==========================================
 
-    log_id = Column(Integer, primary_key=True, autoincrement=True)
-    hospital_id = Column(String(50), ForeignKey('hospitals.hospital_id'), nullable=False)
-    staff_id = Column(String(50), ForeignKey('staffs.staff_id'), nullable=False)
-    staff_role = Column(String(50), nullable=False)
-    action = Column(String(100), nullable=False) # e.g. Login, Patient view
-    entity_type = Column(String(50), nullable=False) # patient, triage, staff, auth
-    entity_id = Column(String(50), nullable=False)
-    timestamp = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
-    details = Column(Text, nullable=True)
-
-class Encounter(Base):
-    __tablename__ = 'encounters'
-
-    id = Column(Integer, primary_key=True, autoincrement=True)
-    encounter_id = Column(String(50), unique=True, index=True, nullable=False) # e.g. ENC-2026-000001
-    patient_id = Column(String(50), ForeignKey('patients.patient_id'), nullable=False)
-    hospital_id = Column(String(50), ForeignKey('hospitals.hospital_id'), nullable=False)
-    status = Column(String(50), default="WAITING_FOR_TRIAGE", nullable=False) # WAITING_FOR_TRIAGE, TRIAGE_IN_PROGRESS, TRIAGED, WAITING_FOR_DOCTOR, DISCHARGED
-    arrival_time = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
-    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
-
-class VitalSigns(Base):
-    __tablename__ = 'vital_signs'
-
-    vital_id = Column(Integer, primary_key=True, autoincrement=True)
-    encounter_id = Column(Integer, ForeignKey('encounters.id'), nullable=False)
-    hospital_id = Column(String(50), ForeignKey('hospitals.hospital_id'), nullable=False)
-    recorded_by = Column(String(50), ForeignKey('staffs.staff_id'), nullable=False)
-    recorded_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
-    heart_rate = Column(Integer, nullable=True)
-    respiratory_rate = Column(Integer, nullable=True)
-    systolic_bp = Column(Integer, nullable=True)
-    diastolic_bp = Column(Integer, nullable=True)
-    spo2 = Column(Integer, nullable=True)
-    temperature = Column(Float, nullable=True)
-    oxygen_support = Column(String(50), default="None", nullable=False) # None, Nasal Cannula, Face Mask, Other
-    oxygen_flow_rate = Column(Float, nullable=True)
-    weight = Column(Float, nullable=True)
-    height = Column(Float, nullable=True)
-    source = Column(String(50), default="MANUAL", nullable=False) # MANUAL, MONITOR, PULSE_OXIMETER, OTHER
-    blood_glucose = Column(Float, nullable=True)
-    gcs = Column(Integer, nullable=True)
-    pain_score = Column(Integer, nullable=True)
-    is_corrected = Column(Boolean, default=False, nullable=False)
-    correction_reason = Column(Text, nullable=True)
-    corrected_by = Column(String(50), ForeignKey('staffs.staff_id'), nullable=True)
-    corrected_at = Column(DateTime, nullable=True)
-
-class TriageAssessment(Base):
-    __tablename__ = 'triage_assessments'
-
-    triage_id = Column(Integer, primary_key=True, autoincrement=True)
-    hospital_id = Column(String(50), ForeignKey('hospitals.hospital_id'), nullable=False)
-    encounter_id = Column(Integer, ForeignKey('encounters.id'), nullable=False)
-    assessed_by = Column(String(50), ForeignKey('staffs.staff_id'), nullable=False)
-    assessed_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
-    presenting_complaint = Column(String(200), nullable=False)
-    symptom_onset = Column(String(100), nullable=True)
-    symptom_severity = Column(Integer, nullable=True) # 0-10
-    associated_symptoms = Column(Text, nullable=True)
-    medical_history = Column(Text, nullable=True)
-    medications = Column(Text, nullable=True)
-    allergies = Column(Text, nullable=True) # Explicit "No known allergies" vs empty
-    triage_notes = Column(Text, nullable=True)
-    clinical_priority = Column(String(50), nullable=True) # HIGH, MEDIUM, LOW
-    status = Column(String(50), default="DRAFT", nullable=False) # DRAFT, COMPLETED, AMENDED
-    created_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
-    updated_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
-    amended_by = Column(String(50), ForeignKey('staffs.staff_id'), nullable=True)
-
-class AIAssessment(Base):
-    __tablename__ = 'ai_assessments'
-
-    assessment_id = Column(Integer, primary_key=True, autoincrement=True)
-    encounter_id = Column(Integer, ForeignKey('encounters.id'), nullable=False)
-    hospital_id = Column(String(50), ForeignKey('hospitals.hospital_id'), nullable=False)
-    risk_score = Column(Float, nullable=False)
-    risk_category = Column(String(50), nullable=False)
-    model_name = Column(String(100), nullable=False)
-    model_version = Column(String(50), nullable=False)
-    input_snapshot = Column(JSON, nullable=False)
-    generated_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
-    generated_by = Column(String(50), ForeignKey('staffs.staff_id'), nullable=False)
-
-class AIExplanation(Base):
-    __tablename__ = 'ai_explanations'
-
-    explanation_id = Column(Integer, primary_key=True, autoincrement=True)
-    ai_assessment_id = Column(Integer, ForeignKey('ai_assessments.assessment_id'), nullable=False)
-    encounter_id = Column(Integer, ForeignKey('encounters.id'), nullable=False)
-    hospital_id = Column(String(50), ForeignKey('hospitals.hospital_id'), nullable=False)
-    explanation_method = Column(String(50), nullable=False)
-    explanation_version = Column(String(50), nullable=False)
-    generated_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
-    status = Column(String(50), nullable=False)
-    feature_contributions = Column(JSON, nullable=False)
-
-# Setup SQLite Database for the prototype
-engine = create_engine("sqlite:///./triage_database.db", connect_args={"check_same_thread": False})
+import os
+db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "triage_database.db"))
+engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
 Base.metadata.create_all(bind=engine)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Migration script to add registration columns to patient database if they do not exist
-with engine.begin() as connection:
-    existing_columns = {
-        row[1] for row in connection.execute(text("PRAGMA table_info(patients)"))
-    }
-    patient_column_migrations = {
-        "first_name": "VARCHAR(100)",
-        "last_name": "VARCHAR(100)",
-        "date_of_birth": "DATE",
-        "contact_info": "VARCHAR(255)",
-        "emergency_contact": "VARCHAR(255)",
-        "known_allergies": "VARCHAR",
-    }
-    for column_name, column_type in patient_column_migrations.items():
-        if column_name not in existing_columns:
-            connection.execute(text(f"ALTER TABLE patients ADD COLUMN {column_name} {column_type}"))
-
-def get_hash(password: str) -> str:
-    salt = bcrypt.gensalt()
-    return bcrypt.hashpw(password.encode('utf-8'), salt).decode('utf-8')
-
-# Database Seeding helper
-def seed_database():
-    db = SessionLocal()
-    try:
-        # 1. Seed Permissions
-        permissions_data = [
-            ("patient:create", "Create patient record"),
-            ("patient:view", "View patient details"),
-            ("patient:update", "Update patient record"),
-            ("triage:create", "Evaluate patient triage"),
-            ("triage:view", "View triage records"),
-            ("triage:update", "Modify triage records"),
-            ("vitals:create", "Record vital signs"),
-            ("vitals:view", "View vital signs"),
-            ("vitals:update", "Modify vital signs"),
-            ("ai:view", "View AI clinical insights"),
-            ("ai:override", "Override AI recommendations"),
-            ("alert:view", "View clinical alerts"),
-            ("alert:acknowledge", "Acknowledge clinical alerts"),
-            ("staff:create", "Create new staff accounts"),
-            ("staff:view", "View staff records"),
-            ("staff:update", "Modify staff profiles"),
-            ("staff:deactivate", "Deactivate staff accounts"),
-            ("hospital:view", "View hospital information"),
-            ("hospital:update", "Update hospital settings"),
-            ("audit:view", "View audit trails")
-        ]
-        
-        existing_perms = {p.permission_id for p in db.query(Permission).all()}
-        for pid, desc in permissions_data:
-            if pid not in existing_perms:
-                db.add(Permission(permission_id=pid, description=desc))
-        db.commit()
-
-        # 2. Seed Roles
-        roles_data = [
-            ("HOSPITAL_ADMINISTRATOR", "Hospital Administrator", "Administrative management only"),
-            ("TRIAGE_NURSE", "Triage Nurse", "Intake and early vital assessments"),
-            ("EMERGENCY_PHYSICIAN", "Emergency Physician", "Emergency physician diagnosis and treatment"),
-            ("STAFF_NURSE", "Staff Nurse", "General clinical ward treatment"),
-            ("EMERGENCY_TECHNICIAN", "Emergency Technician", "Technical vitals recording and assistant"),
-            ("CLINICAL_DIRECTOR", "Clinical Director", "Operational overview and auditing")
-        ]
-        
-        existing_roles = {r.role_id for r in db.query(Role).all()}
-        for rid, name, desc in roles_data:
-            if rid not in existing_roles:
-                db.add(Role(role_id=rid, name=name, description=desc))
-        db.commit()
-
-        # 3. Seed Role-Permissions
-        role_permissions_map = {
-            "HOSPITAL_ADMINISTRATOR": [
-                "staff:create", "staff:view", "staff:update", "staff:deactivate",
-                "hospital:view", "hospital:update", "audit:view"
-            ],
-            "TRIAGE_NURSE": [
-                "patient:create", "patient:view", "triage:create", "triage:view",
-                "triage:update", "vitals:create", "vitals:view", "vitals:update", "ai:view", "alert:view"
-            ],
-            "EMERGENCY_PHYSICIAN": [
-                "patient:view", "patient:update", "triage:view", "vitals:view",
-                "ai:view", "ai:override", "alert:view", "alert:acknowledge"
-            ],
-            "STAFF_NURSE": [
-                "patient:view", "vitals:create", "vitals:view", "triage:view",
-                "ai:view", "alert:view"
-            ],
-            "EMERGENCY_TECHNICIAN": [
-                "patient:view", "vitals:create", "vitals:view"
-            ],
-            "CLINICAL_DIRECTOR": [
-                "patient:view", "triage:view", "vitals:view", "ai:view",
-                "alert:view", "alert:acknowledge", "audit:view"
-            ]
-        }
-
-        role_objs = {r.role_id: r for r in db.query(Role).all()}
-        perm_objs = {p.permission_id: p for p in db.query(Permission).all()}
-
-        for rid, perm_ids in role_permissions_map.items():
-            role_obj = role_objs.get(rid)
-            if role_obj:
-                current_mapped = {p.permission_id for p in role_obj.permissions}
-                for pid in perm_ids:
-                    if pid not in current_mapped and pid in perm_objs:
-                        role_obj.permissions.append(perm_objs[pid])
-        db.commit()
-
-        # 4. Seed Demo Hospital
-        demo_hosp = db.query(Hospital).filter_by(hospital_id="DEMO001").first()
-        if not demo_hosp:
-            demo_hosp = Hospital(
-                hospital_id="DEMO001",
-                name="Demo General Hospital",
-                hospital_type="Teaching Hospital",
-                address="100 Medical Plaza Dr",
-                city="Metropolis",
-                state="NY",
-                country="USA",
-                postal_code="10001",
-                registration_number="REG-778899",
-                emergency_department_available=True,
-                ed_capacity=75,
-                verification_status="VERIFIED"
-            )
-            db.add(demo_hosp)
-            db.commit()
-
-        # 5. Seed Demo Staff
-        staff_data = [
-            ("ADMIN001", "DEMO001", "Admin User", "EMP-001", "admin@demohospital.com", "555-0100", "Administration", "Hospital Admin", "HOSPITAL_ADMINISTRATOR", "DemoAdmin123!"),
-            ("DOC001", "DEMO001", "Dr. Sarah Jenkins", "EMP-002", "doctor@demohospital.com", "555-0101", "Emergency Medicine", "Attending Physician", "EMERGENCY_PHYSICIAN", "DemoDoctor123!"),
-            ("NUR001", "DEMO001", "Nurse Kelly Adams", "EMP-003", "nurse@demohospital.com", "555-0102", "Emergency Medicine", "Triage Nurse", "TRIAGE_NURSE", "DemoNurse123!"),
-            ("TECH001", "DEMO001", "Tech Bob Miller", "EMP-004", "tech@demohospital.com", "555-0103", "Emergency Medicine", "ED Technician", "EMERGENCY_TECHNICIAN", "DemoTech123!"),
-            ("DIR001", "DEMO001", "Dr. Marcus Vance", "EMP-005", "director@demohospital.com", "555-0104", "Emergency Medicine", "Clinical Director", "CLINICAL_DIRECTOR", "DemoDirector123!")
-        ]
-
-        for sid, hid, name, empid, email, phone, dept, desig, role_id, pwd in staff_data:
-            existing_staff = db.query(Staff).filter_by(staff_id=sid, hospital_id=hid).first()
-            if not existing_staff:
-                new_staff = Staff(
-                    staff_id=sid,
-                    hospital_id=hid,
-                    full_name=name,
-                    employee_id=empid,
-                    official_email=email,
-                    phone_number=phone,
-                    department=dept,
-                    designation=desig,
-                    professional_registration_number="LIC-12345" if role_id != "HOSPITAL_ADMINISTRATOR" else None,
-                    years_of_experience=10 if role_id != "HOSPITAL_ADMINISTRATOR" else None,
-                    role_id=role_id,
-                    password_hash=get_hash(pwd),
-                    status="ACTIVE"
-                )
-                db.add(new_staff)
-        db.commit()
-
-        # 6. Seed Demo Patient
-        demo_patient = db.query(Patient).filter_by(patient_id="PT-DEMO-001").first()
-        if not demo_patient:
-            demo_patient = Patient(
-                patient_id="PT-DEMO-001",
-                hospital_id="DEMO001",
-                first_name="John",
-                last_name="Doe",
-                date_of_birth=datetime.date(1980, 1, 1),
-                gender="Male",
-                age=46.0,
-                known_allergies="Penicillin"
-            )
-            db.add(demo_patient)
-            db.commit()
-
-        # 7. Seed Demo Encounter
-        demo_encounter = db.query(Encounter).filter_by(encounter_id="ENC-DEMO-001").first()
-        if not demo_encounter:
-            demo_encounter = Encounter(
-                encounter_id="ENC-DEMO-001",
-                patient_id="PT-DEMO-001",
-                hospital_id="DEMO001",
-                status="WAITING_FOR_TRIAGE"
-            )
-            db.add(demo_encounter)
-            db.commit()
-
-        # Seed longitudinal observations for ENC-DEMO-001
-        db_enc = db.query(Encounter).filter_by(encounter_id="ENC-DEMO-001").first()
-        if db_enc:
-            existing_vitals = db.query(VitalSigns).filter_by(encounter_id=db_enc.id).first()
-            if not existing_vitals:
-                now = datetime.datetime.utcnow()
-                t1 = datetime.datetime(now.year, now.month, now.day, 10, 40)
-                t2 = datetime.datetime(now.year, now.month, now.day, 10, 55)
-                t3 = datetime.datetime(now.year, now.month, now.day, 11, 10)
-                
-                v1 = VitalSigns(
-                    encounter_id=db_enc.id,
-                    hospital_id="DEMO001",
-                    recorded_by="NUR001",
-                    recorded_at=t1,
-                    heart_rate=98,
-                    spo2=96,
-                    respiratory_rate=18,
-                    temperature=37.1,
-                    systolic_bp=130,
-                    diastolic_bp=85,
-                    oxygen_support="None",
-                    source="MONITOR",
-                    blood_glucose=110.0,
-                    gcs=15,
-                    pain_score=4
-                )
-                v2 = VitalSigns(
-                    encounter_id=db_enc.id,
-                    hospital_id="DEMO001",
-                    recorded_by="NUR001",
-                    recorded_at=t2,
-                    heart_rate=108,
-                    spo2=93,
-                    respiratory_rate=22,
-                    temperature=37.5,
-                    systolic_bp=138,
-                    diastolic_bp=88,
-                    oxygen_support="None",
-                    source="MONITOR",
-                    blood_glucose=115.0,
-                    gcs=15,
-                    pain_score=5
-                )
-                v3 = VitalSigns(
-                    encounter_id=db_enc.id,
-                    hospital_id="DEMO001",
-                    recorded_by="NUR001",
-                    recorded_at=t3,
-                    heart_rate=121,
-                    spo2=89,
-                    respiratory_rate=28,
-                    temperature=38.2,
-                    systolic_bp=145,
-                    diastolic_bp=92,
-                    oxygen_support="Nasal Cannula",
-                    oxygen_flow_rate=2.0,
-                    source="MONITOR",
-                    blood_glucose=120.0,
-                    gcs=14,
-                    pain_score=6
-                )
-                db.add(v1)
-                db.add(v2)
-                db.add(v3)
-                db.commit()
-
-    finally:
-        db.close()
