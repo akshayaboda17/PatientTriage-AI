@@ -1,0 +1,78 @@
+{
+  "dataset_version": "v1.0",
+  "created_at": "2026-08-30T11:24:31.519991+00:00",
+  "feature_count": 40,
+  "feature_columns": [
+    "age",
+    "elapsed_wait_minutes",
+    "hr",
+    "sbp",
+    "dbp",
+    "rr",
+    "spo2",
+    "temp",
+    "gcs",
+    "pain_score",
+    "shock_index",
+    "modified_shock_index",
+    "pulse_pressure",
+    "qsofa_score",
+    "mews_score",
+    "delta_hr",
+    "delta_spo2",
+    "delta_sbp",
+    "delta_rr",
+    "velocity_hr",
+    "velocity_spo2",
+    "observation_index",
+    "gender_male",
+    "gender_female",
+    "arrival_mode_walkin",
+    "arrival_mode_ambulance",
+    "arrival_mode_wheelchair",
+    "arrival_mode_other",
+    "complaint_chest_pain",
+    "complaint_respiratory",
+    "complaint_abdominal",
+    "complaint_neurological",
+    "complaint_trauma",
+    "complaint_infection_fever",
+    "complaint_other",
+    "is_initial_observation",
+    "temp_was_missing",
+    "gcs_was_missing",
+    "dbp_was_missing",
+    "pain_was_missing"
+  ],
+  "target_columns": [
+    "composite_critical_outcome_24h",
+    "icu_admitted_24h",
+    "intubated_24h",
+    "vasopressor_24h",
+    "mortality_24h",
+    "triage_acuity_level"
+  ],
+  "partitions": {
+    "train": {
+      "file": "dataset_v1.0_train.csv",
+      "rows": 5676,
+      "unique_patients": 3500,
+      "positive_outcome_rate": 0.22163495419309373,
+      "sha256": "2b230a4216bffb59b0709e5734eac9f2111f1975164fcab3bc61a3fc89bbb762"
+    },
+    "val": {
+      "file": "dataset_v1.0_val.csv",
+      "rows": 1207,
+      "unique_patients": 750,
+      "positive_outcome_rate": 0.23612261806130902,
+      "sha256": "70ddc898b78d2e6fb862c415a11cd0dafd38ef7e26f4166a7a2895269816e8b4"
+    },
+    "test": {
+      "file": "dataset_v1.0_test.csv",
+      "rows": 1214,
+      "unique_patients": 750,
+      "positive_outcome_rate": 0.21993410214168038,
+      "sha256": "89cee4f1824a06fa9eb42ca3f74865857ae17870a36f2604ddd1c408eee584a0"
+    }
+  }
+}
