@@ -50,44 +50,70 @@ export const VitalsProgressionTable = ({ observations, onSelectObsForCorrection 
                   
                   {/* SpO2 with delta */}
                   <td className="px-3 py-3">
-                    <span className={`font-bold ${obs.spo2 < 90 ? 'text-rose-400' : 'text-slate-200'}`}>
-                      {obs.spo2}%
-                    </span>
-                    {spo2Delta !== 0 && (
-                      <span className={`ml-1.5 text-[10px] ${spo2Delta < 0 ? 'text-rose-400 font-bold' : 'text-emerald-400'}`}>
-                        ({spo2Delta > 0 ? `+${spo2Delta}` : spo2Delta})
-                      </span>
+                    {obs.spo2 != null ? (
+                      <>
+                        <span className={`font-bold ${obs.spo2 < 90 ? 'text-rose-400' : 'text-slate-200'}`}>
+                          {obs.spo2}%
+                        </span>
+                        {spo2Delta !== 0 && (
+                          <span className={`ml-1.5 text-[10px] ${spo2Delta < 0 ? 'text-rose-400 font-bold' : 'text-emerald-400'}`}>
+                            ({spo2Delta > 0 ? `+${spo2Delta}` : spo2Delta})
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-slate-500">—</span>
                     )}
                   </td>
 
                   {/* HR with delta */}
                   <td className="px-3 py-3">
-                    <span className={`font-bold ${obs.hr >= 110 ? 'text-amber-400' : 'text-slate-200'}`}>
-                      {obs.hr}
-                    </span>
-                    {hrDelta !== 0 && (
-                      <span className={`ml-1.5 text-[10px] ${hrDelta > 0 ? 'text-rose-400 font-bold' : 'text-slate-400'}`}>
-                        ({hrDelta > 0 ? `+${hrDelta}` : hrDelta})
-                      </span>
+                    {obs.hr != null ? (
+                      <>
+                        <span className={`font-bold ${obs.hr >= 110 ? 'text-amber-400' : 'text-slate-200'}`}>
+                          {obs.hr}
+                        </span>
+                        {hrDelta !== 0 && (
+                          <span className={`ml-1.5 text-[10px] ${hrDelta > 0 ? 'text-rose-400 font-bold' : 'text-slate-400'}`}>
+                            ({hrDelta > 0 ? `+${hrDelta}` : hrDelta})
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-slate-500">—</span>
                     )}
                   </td>
 
                   {/* RR with delta */}
                   <td className="px-3 py-3">
-                    <span className={`font-bold ${obs.rr >= 24 ? 'text-rose-400' : 'text-slate-200'}`}>
-                      {obs.rr}
-                    </span>
-                    {rrDelta !== 0 && (
-                      <span className={`ml-1.5 text-[10px] ${rrDelta > 0 ? 'text-rose-400 font-bold' : 'text-slate-400'}`}>
-                        ({rrDelta > 0 ? `+${rrDelta}` : rrDelta})
-                      </span>
+                    {obs.rr != null ? (
+                      <>
+                        <span className={`font-bold ${obs.rr >= 24 ? 'text-rose-400' : 'text-slate-200'}`}>
+                          {obs.rr}
+                        </span>
+                        {rrDelta !== 0 && (
+                          <span className={`ml-1.5 text-[10px] ${rrDelta > 0 ? 'text-rose-400 font-bold' : 'text-slate-400'}`}>
+                            ({rrDelta > 0 ? `+${rrDelta}` : rrDelta})
+                          </span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-slate-500">—</span>
                     )}
                   </td>
 
-                  <td className="px-3 py-3 text-slate-200">{obs.sbp}/{obs.dbp || '-'}</td>
-                  <td className="px-3 py-3 text-slate-300">{obs.temp || '-'}</td>
-                  <td className="px-3 py-3 text-slate-300">{obs.gcs}</td>
-                  <td className="px-3 py-3 text-slate-400 text-[11px] font-sans">{obs.recorded_by}</td>
+                  <td className="px-3 py-3 text-slate-200">
+                    {obs.sbp != null ? `${obs.sbp}${obs.dbp != null ? `/${obs.dbp}` : ''}` : (obs.dbp != null ? `—/${obs.dbp}` : '—')}
+                  </td>
+                  <td className="px-3 py-3 text-slate-300">
+                    {obs.temp != null ? `${obs.temp}°C` : '—'}
+                  </td>
+                  <td className="px-3 py-3 text-slate-300">
+                    {obs.gcs != null ? obs.gcs : '—'}
+                  </td>
+                  <td className="px-3 py-3 text-slate-400 text-[11px] font-sans">
+                    {obs.recorded_by || '—'}
+                  </td>
                   <td className="px-3 py-3 text-right">
                     {hasPermission('vitals:update') && onSelectObsForCorrection && (
                       <button

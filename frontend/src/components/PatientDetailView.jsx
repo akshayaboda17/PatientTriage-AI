@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { 
-  ArrowLeft, Activity, ShieldAlert, PlusCircle, CheckCircle2, Stethoscope, RefreshCw, X
+  ArrowLeft, Activity, ShieldAlert, PlusCircle, CheckCircle2, Stethoscope, RefreshCw, X, Edit3, Sparkles
 } from 'lucide-react';
 import { ObservationCorrectionModal } from './ObservationCorrectionModal';
+import { UpdatePatientConditionModal } from './patient/UpdatePatientConditionModal';
 import { PatientDemographicsCard } from './patient/PatientDemographicsCard';
 import { VitalsProgressionTable } from './patient/VitalsProgressionTable';
 import { AiRiskCard } from './patient/AiRiskCard';
@@ -15,23 +16,8 @@ export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertSt
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // New Vitals Form state
-  const [showVitalsForm, setShowVitalsForm] = useState(false);
-  const [vitalsInput, setVitalsInput] = useState({
-    hr: 125,
-    sbp: 114,
-    dbp: 70,
-    rr: 31,
-    spo2: 87,
-    temp: 37.5,
-    gcs: 15,
-    pain_score: 4,
-    notes: 'Patient visibly tachypneic and pale in waiting room.'
-  });
-  const [submittingVitals, setSubmittingVitals] = useState(false);
-
-  // AI Assessment Trigger
-  const [generatingAi, setGeneratingAi] = useState(false);
+  // Update Condition & Vitals Modal state
+  const [showUpdateConditionModal, setShowUpdateConditionModal] = useState(false);
 
   // Observation Correction modal state
   const [selectedObsForCorrection, setSelectedObsForCorrection] = useState(null);
@@ -63,73 +49,6 @@ export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertSt
       addToast("Network error loading patient workspace.", "error");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleRecordVitals = async (e) => {
-    e.preventDefault();
-    if (!hasPermission('vitals:create')) {
-      addToast("Access Restricted: You need 'vitals:create' permission.", "error");
-      return;
-    }
-
-    setSubmittingVitals(true);
-    try {
-      const res = await fetch(`/api/encounters/${encounterId}/vitals`, {
-        method: 'POST',
-        headers: {
-          ...authHeaders,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(vitalsInput)
-      });
-
-      if (res.ok) {
-        const result = await res.json();
-        if (result.deterioration_detected) {
-          addToast(`⚠️ POSSIBLE CLINICAL DETERIORATION: ${result.alert_status_message}`, 'warning', 10000);
-        } else {
-          addToast("Updated vital signs recorded. Baseline parameters stable.", 'success');
-        }
-        setShowVitalsForm(false);
-        fetchDetails();
-        if (onAlertStateChanged) onAlertStateChanged();
-      } else {
-        const err = await res.json();
-        addToast(err.detail || "Failed to record vital signs.", "error");
-      }
-    } catch (err) {
-      addToast("Network error recording vital signs.", "error");
-    } finally {
-      setSubmittingVitals(false);
-    }
-  };
-
-  const handleGenerateAiAssessment = async () => {
-    if (!hasPermission('triage:ai_infer')) {
-      addToast("Access Restricted: Your role cannot trigger AI assessments.", "error");
-      return;
-    }
-
-    setGeneratingAi(true);
-    try {
-      const res = await fetch(`/api/encounters/${encounterId}/ai-risk`, {
-        method: 'POST',
-        headers: authHeaders
-      });
-
-      if (res.ok) {
-        const aiData = await res.json();
-        addToast("AI Risk Assessment updated successfully.", "success");
-        fetchDetails();
-      } else {
-        const err = await res.json().catch(() => ({}));
-        addToast(err.detail || "Failed to update AI risk assessment.", "error");
-      }
-    } catch (err) {
-      addToast("Network error calculating AI risk.", "error");
-    } finally {
-      setGeneratingAi(false);
     }
   };
 
@@ -187,7 +106,7 @@ export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertSt
 
   if (!data) return null;
 
-  const { encounter, patient, observations = [], ai_risk, ai_explanation, alerts = [], timeline = [] } = data;
+  const { encounter, patient, observations = [], ai_risk, ai_explanation, alerts = [], timeline = [], triage } = data;
 
   return (
     <div className="space-y-6">
@@ -218,18 +137,18 @@ export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertSt
         <div className="flex items-center gap-2">
           {hasPermission('vitals:create') && (
             <button
-              onClick={() => setShowVitalsForm(!showVitalsForm)}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow-md shadow-cyan-900/30 transition-all cursor-pointer"
+              onClick={() => setShowUpdateConditionModal(true)}
+              className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow-lg shadow-cyan-900/40 transition-all cursor-pointer"
             >
-              <PlusCircle className="w-4 h-4" />
-              <span>Record Vital Signs</span>
+              <Activity className="w-4 h-4" />
+              <span>Update Condition &amp; Vitals</span>
             </button>
           )}
 
           {hasPermission('physician:review') && onOpenReview && (
             <button
               onClick={onOpenReview}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-900/30 transition-all cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-900/30 transition-all cursor-pointer"
             >
               <Stethoscope className="w-4 h-4" />
               <span>Physician Review</span>
@@ -238,7 +157,7 @@ export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertSt
 
           <button
             onClick={fetchDetails}
-            className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
+            className="p-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer"
             title="Refresh patient details"
           >
             <RefreshCw className="w-4 h-4" />
@@ -250,239 +169,100 @@ export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertSt
       <PatientDemographicsCard
         patient={patient}
         encounter={encounter}
+        triage={triage}
         onOpenCorrection={() => {}}
       />
 
-      {/* Record New Vitals Form (Expandable) */}
-      {showVitalsForm && (
-        <div className="bg-slate-900 border border-cyan-500/40 rounded-3xl p-6 shadow-2xl space-y-4 animate-in fade-in">
-          <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-            <div className="flex items-center gap-2">
-              <Activity className="w-5 h-5 text-cyan-400" />
-              <h3 className="text-sm font-bold text-white uppercase tracking-wider">
-                Record Updated Bedside Vital Signs
-              </h3>
-            </div>
-            <button
-              onClick={() => setShowVitalsForm(false)}
-              className="text-slate-400 hover:text-white cursor-pointer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-
-          <form onSubmit={handleRecordVitals} className="space-y-4">
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-              <div className="space-y-1">
-                <label className="block text-slate-400 font-bold">Heart Rate (bpm) *</label>
-                <input
-                  type="number"
-                  required
-                  value={vitalsInput.hr}
-                  onChange={(e) => setVitalsInput({ ...vitalsInput, hr: Number(e.target.value) })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-slate-400 font-bold">Systolic BP (mmHg) *</label>
-                <input
-                  type="number"
-                  required
-                  value={vitalsInput.sbp}
-                  onChange={(e) => setVitalsInput({ ...vitalsInput, sbp: Number(e.target.value) })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-slate-400 font-bold">Diastolic BP (mmHg)</label>
-                <input
-                  type="number"
-                  value={vitalsInput.dbp}
-                  onChange={(e) => setVitalsInput({ ...vitalsInput, dbp: Number(e.target.value) })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-slate-400 font-bold">Oxygen SpO₂ (%) *</label>
-                <input
-                  type="number"
-                  required
-                  value={vitalsInput.spo2}
-                  onChange={(e) => setVitalsInput({ ...vitalsInput, spo2: Number(e.target.value) })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-slate-400 font-bold">Resp Rate (/min) *</label>
-                <input
-                  type="number"
-                  required
-                  value={vitalsInput.rr}
-                  onChange={(e) => setVitalsInput({ ...vitalsInput, rr: Number(e.target.value) })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-slate-400 font-bold">Temp (°C) *</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  required
-                  value={vitalsInput.temp}
-                  onChange={(e) => setVitalsInput({ ...vitalsInput, temp: Number(e.target.value) })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-slate-400 font-bold">GCS Consciousness (3-15)</label>
-                <input
-                  type="number"
-                  value={vitalsInput.gcs}
-                  onChange={(e) => setVitalsInput({ ...vitalsInput, gcs: Number(e.target.value) })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-slate-400 font-bold">Pain Level (0-10)</label>
-                <input
-                  type="number"
-                  value={vitalsInput.pain_score}
-                  onChange={(e) => setVitalsInput({ ...vitalsInput, pain_score: Number(e.target.value) })}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1 text-xs">
-              <label className="block text-slate-400 font-bold">Clinical Notes &amp; Observations</label>
-              <textarea
-                rows={2}
-                value={vitalsInput.notes}
-                onChange={(e) => setVitalsInput({ ...vitalsInput, notes: e.target.value })}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 text-xs"
-              />
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
-              <button
-                type="button"
-                onClick={() => setShowVitalsForm(false)}
-                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={submittingVitals}
-                className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow-md shadow-cyan-900/30 transition-all disabled:opacity-50 cursor-pointer"
-              >
-                {submittingVitals ? 'Saving...' : 'Save Observations'}
-              </button>
-            </div>
-          </form>
-        </div>
-      )}
-
-      {/* Main Grid: AI & Clinical Evidence (Left) vs Timeline & Alerts (Right) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      {/* Main Grid: Clinical Observations & AI Risk Assessment */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         
-        {/* LEFT 7 COLS: AI Risk, Explainability, and Vitals Table */}
-        <div className="lg:col-span-7 space-y-5">
+        {/* Left 2 Columns: Longitudinal Vitals & Clinical Timeline */}
+        <div className="lg:col-span-2 space-y-6">
+          <VitalsProgressionTable
+            observations={observations}
+            onSelectObsForCorrection={(obs) => setSelectedObsForCorrection(obs)}
+          />
+
+          <ClinicalTimeline timeline={timeline} />
+        </div>
+
+        {/* Right 1 Column: AI Clinical Risk & Model Explainability */}
+        <div className="space-y-6">
           <AiRiskCard
             aiRisk={ai_risk}
-            onGenerateAi={handleGenerateAiAssessment}
-            generatingAi={generatingAi}
-            onOpenReview={onOpenReview}
+            encounter={encounter}
+            onTriggerAssessment={fetchDetails}
           />
 
           <ExplainabilityCard
-            aiExplanation={ai_explanation}
+            explanation={ai_explanation}
           />
 
-          <VitalsProgressionTable
-            observations={observations}
-            onOpenCorrection={(obs) => setSelectedObsForCorrection(obs)}
-          />
-        </div>
-
-        {/* RIGHT 5 COLS: Active Alerts & Clinical Timeline */}
-        <div className="lg:col-span-5 space-y-5">
-          
-          {/* Active Alerts Feed */}
+          {/* Active Alerts for this Patient */}
           {alerts.length > 0 && (
-            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-3">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <div className="flex items-center gap-2">
-                  <ShieldAlert className="w-4 h-4 text-amber-400" />
-                  <h3 className="text-sm font-bold text-white">Active Clinical Alerts ({alerts.length})</h3>
-                </div>
+            <div className="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl space-y-3">
+              <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
+                <ShieldAlert className="w-4 h-4 text-amber-400" />
+                <h3 className="text-sm font-bold text-white">Active Condition Alerts</h3>
               </div>
-
-              <div className="space-y-2.5">
-                {alerts.map((al) => (
-                  <div
-                    key={al.alert_id}
-                    className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-2"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="font-bold text-xs text-rose-300">{al.message}</span>
-                      <span className="text-[10px] font-mono text-slate-500">
-                        {al.created_at ? new Date(al.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : ''}
+              
+              <div className="space-y-2">
+                {alerts.map((alert) => (
+                  <div key={alert.alert_id} className="p-3 bg-slate-950 rounded-xl border border-slate-800 space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <span className={`px-2 py-0.5 rounded text-[9px] font-bold ${
+                        alert.severity === 'CRITICAL' ? 'bg-rose-950 text-rose-300 border border-rose-800' : 'bg-amber-950 text-amber-300 border border-amber-800'
+                      }`}>
+                        {alert.severity}
+                      </span>
+                      <span className="text-[10px] text-slate-500 font-mono">
+                        {new Date(alert.detected_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </span>
                     </div>
-
-                    <div className="flex items-center justify-end gap-1.5 pt-1 border-t border-slate-800/60">
-                      {hasPermission('alert:resolve') && (
-                        <button
-                          onClick={() => {
-                            setSelectedAlertForAction(al);
-                            setActionType('resolve');
-                            setActionReason('');
-                          }}
-                          className="px-2.5 py-1 rounded-lg bg-emerald-950/80 text-emerald-300 border border-emerald-800 text-[11px] font-bold cursor-pointer"
-                        >
-                          Resolve Alert
-                        </button>
-                      )}
-                      {hasPermission('alert:dismiss') && (
-                        <button
-                          onClick={() => {
-                            setSelectedAlertForAction(al);
-                            setActionType('dismiss');
-                            setActionReason('');
-                          }}
-                          className="px-2.5 py-1 rounded-lg bg-slate-800 text-slate-300 border border-slate-700 text-[11px] cursor-pointer"
-                        >
-                          Dismiss
-                        </button>
-                      )}
+                    <p className="text-xs text-slate-200">{alert.summary}</p>
+                    <div className="flex justify-end gap-2 pt-1">
+                      <button
+                        onClick={() => {
+                          setSelectedAlertForAction(alert);
+                          setActionType('resolve');
+                        }}
+                        className="px-2 py-1 rounded bg-emerald-950 hover:bg-emerald-900 text-emerald-300 text-[10px] font-bold border border-emerald-800"
+                      >
+                        Resolve Alert
+                      </button>
                     </div>
                   </div>
                 ))}
               </div>
             </div>
           )}
-
-          {/* Chronological Clinical Timeline */}
-          <ClinicalTimeline timeline={timeline} />
-
         </div>
 
       </div>
 
+      {/* Update Condition & Vitals Modal */}
+      {showUpdateConditionModal && (
+        <UpdatePatientConditionModal
+          isOpen={showUpdateConditionModal}
+          onClose={() => setShowUpdateConditionModal(false)}
+          encounter={encounter}
+          patient={patient}
+          currentTriageLevel={triage?.triage_level}
+          onConditionUpdated={() => {
+            fetchDetails();
+            if (onAlertStateChanged) onAlertStateChanged();
+          }}
+        />
+      )}
+
       {/* Observation Correction Modal */}
       {selectedObsForCorrection && (
         <ObservationCorrectionModal
-          observation={selectedObsForCorrection}
+          isOpen={!!selectedObsForCorrection}
           onClose={() => setSelectedObsForCorrection(null)}
-          onCorrected={() => {
+          observation={selectedObsForCorrection}
+          encounterId={encounterId}
+          onCorrectionSaved={() => {
             setSelectedObsForCorrection(null);
             fetchDetails();
           }}
@@ -491,47 +271,41 @@ export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertSt
 
       {/* Alert Resolution Modal */}
       {selectedAlertForAction && (
-        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-base font-bold text-white">
-                {actionType === 'resolve' ? 'Resolve Clinical Alert' : 'Dismiss Alert'}
-              </h3>
-              <button
-                onClick={() => setSelectedAlertForAction(null)}
-                className="text-slate-400 hover:text-white cursor-pointer"
-              >
+              <h3 className="text-sm font-bold text-white">Resolve Clinical Alert</h3>
+              <button onClick={() => setSelectedAlertForAction(null)} className="text-slate-400 hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
-
-            <form onSubmit={handleResolveAlert} className="space-y-3.5 text-xs">
-              <div className="space-y-1">
-                <label className="block text-slate-400 font-bold">Clinical Documentation Note *</label>
+            <p className="text-xs text-slate-300">{selectedAlertForAction.summary}</p>
+            <form onSubmit={handleResolveAlert} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-slate-400 font-bold mb-1">Resolution Clinical Note *</label>
                 <textarea
                   required
                   rows={3}
-                  placeholder="Describe bedside evaluation and clinical intervention..."
+                  placeholder="Document clinical resolution..."
                   value={actionReason}
                   onChange={(e) => setActionReason(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-slate-200 focus:outline-none focus:border-cyan-500"
                 />
               </div>
-
-              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
+              <div className="flex justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => setSelectedAlertForAction(null)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-bold"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submittingAction}
-                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md transition-all cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold"
                 >
-                  {submittingAction ? 'Saving...' : 'Confirm'}
+                  Confirm Resolution
                 </button>
               </div>
             </form>

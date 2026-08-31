@@ -314,8 +314,8 @@ class ClinicalObservation(Base):
     rr = Column(Integer, nullable=False)          # Respiratory Rate (breaths/min)
     spo2 = Column(Integer, nullable=False)        # SpO2 Oxygen Saturation (%)
     temp = Column(Float, nullable=True)           # Body Temp (Celsius)
-    gcs = Column(Integer, default=15, nullable=False) # Glasgow Coma Scale (3-15)
-    pain_score = Column(Integer, default=0, nullable=True) # Pain (0-10)
+    gcs = Column(Integer, nullable=True) # Glasgow Coma Scale (3-15)
+    pain_score = Column(Integer, nullable=True) # Pain (0-10)
     
     recorded_by = Column(String(50), nullable=False) # Staff ID
     notes = Column(Text, nullable=True)

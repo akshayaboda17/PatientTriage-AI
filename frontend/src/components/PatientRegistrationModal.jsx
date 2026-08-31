@@ -47,13 +47,13 @@ export const PatientRegistrationModal = ({ isOpen, onClose, onPatientRegistered,
   if (!isOpen) return null;
 
   // ─────────────────────────────────────────────
-  // Input Validation (Strict clinical safety)
+  // Input Validation (Only required basics, all unknown fields remain blank)
   // ─────────────────────────────────────────────
 
   const validate = () => {
     const errors = {};
 
-    // 1. Patient Info
+    // 1. Mandatory Patient Identification
     if (!formData.first_name.trim()) {
       errors.first_name = "First name is required.";
     }
@@ -68,64 +68,55 @@ export const PatientRegistrationModal = ({ isOpen, onClose, onPatientRegistered,
     } else {
       const ageNum = Number(formData.age);
       if (isNaN(ageNum) || !Number.isInteger(ageNum) || ageNum < 0 || ageNum > 125) {
-        errors.age = "Please enter a valid age in years.";
+        errors.age = "Please enter a valid age in years (0 to 125).";
       }
     }
 
-    if (!formData.gender) {
-      errors.gender = "Please select biological sex.";
-    }
-
-    // 2. Clinical Presentation
+    // 2. Mandatory Chief Complaint
     if (!formData.chief_complaint.trim()) {
       errors.chief_complaint = "Chief complaint and presenting symptoms are required.";
     }
 
-    if (!formData.arrival_mode) {
-      errors.arrival_mode = "Please select arrival mode.";
-    }
-
-    // 3. Bedside Vitals validation
-    if (!formData.hr.trim()) {
-      errors.hr = "Heart rate is required.";
-    } else {
+    // Optional vitals range checks (Only if user actually entered them)
+    if (formData.hr.trim()) {
       const hrNum = Number(formData.hr);
       if (isNaN(hrNum) || hrNum <= 0 || hrNum > 300) {
         errors.hr = "Please enter a valid heart rate (bpm).";
       }
     }
 
-    if (!formData.sbp.trim()) {
-      errors.sbp = "Systolic blood pressure is required.";
-    } else {
+    if (formData.sbp.trim()) {
       const sbpNum = Number(formData.sbp);
-      if (isNaN(sbpNum) || sbpNum <= 0 || sbpNum > 300) {
-        errors.sbp = "Please enter a valid systolic blood pressure (mmHg).";
+      if (isNaN(sbpNum) || sbpNum <= 0 || sbpNum > 350) {
+        errors.sbp = "Please enter a valid systolic BP (mmHg).";
       }
     }
 
     if (formData.dbp.trim()) {
       const dbpNum = Number(formData.dbp);
-      if (isNaN(dbpNum) || dbpNum <= 0 || dbpNum > 200) {
-        errors.dbp = "Please enter a valid diastolic blood pressure (mmHg).";
+      if (isNaN(dbpNum) || dbpNum <= 0 || dbpNum > 250) {
+        errors.dbp = "Please enter a valid diastolic BP (mmHg).";
       }
     }
 
-    if (!formData.spo2.trim()) {
-      errors.spo2 = "Oxygen saturation (SpO₂) is required.";
-    } else {
+    if (formData.spo2.trim()) {
       const spo2Num = Number(formData.spo2);
       if (isNaN(spo2Num) || spo2Num < 40 || spo2Num > 100) {
         errors.spo2 = "Please enter a valid SpO₂ percentage (40–100%).";
       }
     }
 
-    if (!formData.rr.trim()) {
-      errors.rr = "Respiratory rate is required.";
-    } else {
+    if (formData.rr.trim()) {
       const rrNum = Number(formData.rr);
       if (isNaN(rrNum) || rrNum <= 0 || rrNum > 80) {
         errors.rr = "Please enter a valid respiratory rate (/min).";
+      }
+    }
+
+    if (formData.temp.trim()) {
+      const tempNum = Number(formData.temp);
+      if (isNaN(tempNum) || tempNum < 25 || tempNum > 45) {
+        errors.temp = "Please enter a valid temperature (°C).";
       }
     }
 
@@ -147,7 +138,7 @@ export const PatientRegistrationModal = ({ isOpen, onClose, onPatientRegistered,
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!validate()) {
-      addToast("Please complete all required fields with valid clinical values.", "warning");
+      addToast("Please check the form for errors before submitting.", "warning");
       return;
     }
 
@@ -161,7 +152,7 @@ export const PatientRegistrationModal = ({ isOpen, onClose, onPatientRegistered,
           first_name: formData.first_name.trim(),
           last_name: formData.last_name.trim(),
           age: parseInt(formData.age, 10),
-          gender: formData.gender,
+          gender: formData.gender || 'Unknown',
           phone: formData.phone.trim() || undefined,
           allergies: formData.allergies.trim() || undefined,
           medical_history: formData.medical_history.trim() || undefined
@@ -183,7 +174,7 @@ export const PatientRegistrationModal = ({ isOpen, onClose, onPatientRegistered,
         body: JSON.stringify({
           patient_id: patientId,
           chief_complaint: formData.chief_complaint.trim(),
-          arrival_mode: formData.arrival_mode,
+          arrival_mode: formData.arrival_mode || 'Walk-in',
           bed_number: formData.bed_number.trim() || 'Waiting Area'
         })
       });
@@ -196,25 +187,24 @@ export const PatientRegistrationModal = ({ isOpen, onClose, onPatientRegistered,
       const encounter = encData.encounter;
       const encounterId = encounter.encounter_id;
 
-      // Step 3: Record Bedside Vital Signs
-      const vitalsRes = await fetch(`/api/encounters/${encounterId}/vitals`, {
-        method: 'POST',
-        headers: { ...authHeaders, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          hr: parseFloat(formData.hr),
-          sbp: parseFloat(formData.sbp),
-          dbp: formData.dbp.trim() ? parseFloat(formData.dbp) : undefined,
-          rr: parseFloat(formData.rr),
-          spo2: parseFloat(formData.spo2),
-          temp: formData.temp.trim() ? parseFloat(formData.temp) : 37.0,
-          gcs: 15,
-          pain_score: formData.pain_score.trim() ? parseInt(formData.pain_score, 10) : 0,
-          notes: 'Bedside vital signs recorded during intake.'
-        })
-      });
-
-      if (!vitalsRes.ok) {
-        throw new Error("Unable to record bedside vital signs.");
+      // Step 3: Record Bedside Vital Signs (Only the values entered by the user)
+      const hasAnyVitals = formData.hr || formData.sbp || formData.dbp || formData.rr || formData.spo2 || formData.temp || formData.pain_score;
+      
+      if (hasAnyVitals) {
+        await fetch(`/api/encounters/${encounterId}/vitals`, {
+          method: 'POST',
+          headers: { ...authHeaders, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            hr: formData.hr.trim() ? parseFloat(formData.hr) : undefined,
+            sbp: formData.sbp.trim() ? parseFloat(formData.sbp) : undefined,
+            dbp: formData.dbp.trim() ? parseFloat(formData.dbp) : undefined,
+            rr: formData.rr.trim() ? parseFloat(formData.rr) : undefined,
+            spo2: formData.spo2.trim() ? parseFloat(formData.spo2) : undefined,
+            temp: formData.temp.trim() ? parseFloat(formData.temp) : undefined,
+            pain_score: formData.pain_score.trim() ? parseInt(formData.pain_score, 10) : undefined,
+            notes: 'Bedside intake measurements recorded.'
+          })
+        });
       }
 
       // Step 4: Run Supervised ML Clinical Risk & Priority Assessment
@@ -254,7 +244,7 @@ export const PatientRegistrationModal = ({ isOpen, onClose, onPatientRegistered,
           pain_score: formData.pain_score.trim() ? parseInt(formData.pain_score, 10) : 0,
           mobility: formData.arrival_mode?.includes('Ambulance') ? 'Stretcher' : 'Ambulatory',
           notes: aiAvailable 
-            ? 'AI-supported initial triage assessment based on presenting symptoms and baseline vitals.'
+            ? 'AI-supported initial triage assessment based on presenting symptoms and vitals.'
             : 'Initial clinical triage assessment (AI service offline).'
         })
       });
@@ -307,7 +297,7 @@ export const PatientRegistrationModal = ({ isOpen, onClose, onPatientRegistered,
               <p className="text-[11px] text-slate-400">
                 {assessmentResult 
                   ? 'ML model evaluated clinical presentation, vitals, and determined care priority'
-                  : 'Record patient demographics and bedside vitals for ML care priority evaluation'}
+                  : 'All fields start blank. Enter whatever information is available at bedside.'}
               </p>
             </div>
           </div>
@@ -393,20 +383,17 @@ export const PatientRegistrationModal = ({ isOpen, onClose, onPatientRegistered,
 
                 {/* Biological Sex */}
                 <div className="space-y-1">
-                  <label className="block text-slate-400 font-bold">Biological Sex *</label>
+                  <label className="block text-slate-400 font-bold">Biological Sex</label>
                   <select
                     value={formData.gender}
                     onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
-                    className={`w-full bg-slate-900 border ${validationErrors.gender ? 'border-rose-500' : 'border-slate-800'} rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500 cursor-pointer`}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500 cursor-pointer"
                   >
-                    <option value="">[ Select biological sex... ]</option>
+                    <option value="">[ Select biological sex (optional)... ]</option>
                     <option value="Female">Female</option>
                     <option value="Male">Male</option>
                     <option value="Other">Other / Non-Binary</option>
                   </select>
-                  {validationErrors.gender && (
-                    <span className="text-[10px] text-rose-400 font-semibold">{validationErrors.gender}</span>
-                  )}
                 </div>
 
                 {/* Contact Phone (Starts blank) */}
@@ -437,7 +424,7 @@ export const PatientRegistrationModal = ({ isOpen, onClose, onPatientRegistered,
                   <textarea
                     required
                     rows={2}
-                    placeholder="Describe presenting symptoms (e.g. Sudden severe chest tightness radiating to left arm)..."
+                    placeholder="Describe presenting symptoms (e.g. Severe chest tightness radiating to left arm)..."
                     value={formData.chief_complaint}
                     onChange={(e) => setFormData({ ...formData, chief_complaint: e.target.value })}
                     className={`w-full bg-slate-900 border ${validationErrors.chief_complaint ? 'border-rose-500' : 'border-slate-800'} rounded-xl p-2 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500`}
@@ -449,21 +436,18 @@ export const PatientRegistrationModal = ({ isOpen, onClose, onPatientRegistered,
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="block text-slate-400 font-bold">Arrival Mode *</label>
+                    <label className="block text-slate-400 font-bold">Arrival Mode</label>
                     <select
                       value={formData.arrival_mode}
                       onChange={(e) => setFormData({ ...formData, arrival_mode: e.target.value })}
-                      className={`w-full bg-slate-900 border ${validationErrors.arrival_mode ? 'border-rose-500' : 'border-slate-800'} rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500 cursor-pointer`}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500 cursor-pointer"
                     >
-                      <option value="">[ Select arrival mode... ]</option>
+                      <option value="">[ Select arrival mode (optional)... ]</option>
                       <option value="Walk-in">Walk-in</option>
                       <option value="Ambulance (EMS)">Ambulance (EMS)</option>
                       <option value="Hospital Transfer">Hospital Transfer</option>
                       <option value="Wheelchair Intake">Wheelchair Intake</option>
                     </select>
-                    {validationErrors.arrival_mode && (
-                      <span className="text-[10px] text-rose-400 font-semibold">{validationErrors.arrival_mode}</span>
-                    )}
                   </div>
 
                   <div className="space-y-1">
@@ -494,7 +478,7 @@ export const PatientRegistrationModal = ({ isOpen, onClose, onPatientRegistered,
                     <label className="block text-slate-400 font-bold">Known Allergies (Optional)</label>
                     <input
                       type="text"
-                      placeholder="e.g. Penicillin, NSAIDs, None Known"
+                      placeholder="e.g. Penicillin, NSAIDs"
                       value={formData.allergies}
                       onChange={(e) => setFormData({ ...formData, allergies: e.target.value })}
                       className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500"
@@ -511,7 +495,7 @@ export const PatientRegistrationModal = ({ isOpen, onClose, onPatientRegistered,
                   SECTION 3: BEDSIDE VITAL SIGNS
                 </span>
                 <span className="text-[10px] text-slate-500">
-                  Measured at bedside prior to form completion
+                  Enter only measured parameters; leave others blank
                 </span>
               </div>
 
@@ -519,11 +503,10 @@ export const PatientRegistrationModal = ({ isOpen, onClose, onPatientRegistered,
                 
                 {/* Heart Rate */}
                 <div className="space-y-1">
-                  <label className="block text-slate-400 text-[11px] font-sans font-bold">Heart Rate (bpm) *</label>
+                  <label className="block text-slate-400 text-[11px] font-sans font-bold">Heart Rate (bpm)</label>
                   <input
                     type="text"
                     inputMode="numeric"
-                    required
                     placeholder="e.g. 110"
                     value={formData.hr}
                     onChange={(e) => setFormData({ ...formData, hr: e.target.value.replace(/\D/g, '') })}
@@ -534,11 +517,10 @@ export const PatientRegistrationModal = ({ isOpen, onClose, onPatientRegistered,
 
                 {/* Systolic BP */}
                 <div className="space-y-1">
-                  <label className="block text-slate-400 text-[11px] font-sans font-bold">Systolic BP (mmHg) *</label>
+                  <label className="block text-slate-400 text-[11px] font-sans font-bold">Systolic BP (mmHg)</label>
                   <input
                     type="text"
                     inputMode="numeric"
-                    required
                     placeholder="e.g. 140"
                     value={formData.sbp}
                     onChange={(e) => setFormData({ ...formData, sbp: e.target.value.replace(/\D/g, '') })}
@@ -563,11 +545,10 @@ export const PatientRegistrationModal = ({ isOpen, onClose, onPatientRegistered,
 
                 {/* SpO2 */}
                 <div className="space-y-1">
-                  <label className="block text-slate-400 text-[11px] font-sans font-bold">SpO₂ (%) *</label>
+                  <label className="block text-slate-400 text-[11px] font-sans font-bold">SpO₂ (%)</label>
                   <input
                     type="text"
                     inputMode="numeric"
-                    required
                     placeholder="e.g. 92"
                     value={formData.spo2}
                     onChange={(e) => setFormData({ ...formData, spo2: e.target.value.replace(/\D/g, '') })}
@@ -578,11 +559,10 @@ export const PatientRegistrationModal = ({ isOpen, onClose, onPatientRegistered,
 
                 {/* Resp Rate */}
                 <div className="space-y-1">
-                  <label className="block text-slate-400 text-[11px] font-sans font-bold">Respiratory Rate (/min) *</label>
+                  <label className="block text-slate-400 text-[11px] font-sans font-bold">Respiratory Rate (/min)</label>
                   <input
                     type="text"
                     inputMode="numeric"
-                    required
                     placeholder="e.g. 24"
                     value={formData.rr}
                     onChange={(e) => setFormData({ ...formData, rr: e.target.value.replace(/\D/g, '') })}
@@ -591,8 +571,22 @@ export const PatientRegistrationModal = ({ isOpen, onClose, onPatientRegistered,
                   {validationErrors.rr && <span className="text-[9px] text-rose-400 font-sans">{validationErrors.rr}</span>}
                 </div>
 
-                {/* Pain Level */}
+                {/* Temp */}
                 <div className="space-y-1">
+                  <label className="block text-slate-400 text-[11px] font-sans font-bold">Temperature (°C)</label>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="e.g. 37.2"
+                    value={formData.temp}
+                    onChange={(e) => setFormData({ ...formData, temp: e.target.value })}
+                    className={`w-full bg-slate-900 border ${validationErrors.temp ? 'border-rose-500' : 'border-slate-800'} rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500`}
+                  />
+                  {validationErrors.temp && <span className="text-[9px] text-rose-400 font-sans">{validationErrors.temp}</span>}
+                </div>
+
+                {/* Pain Level */}
+                <div className="space-y-1 sm:col-span-3">
                   <label className="block text-slate-400 text-[11px] font-sans font-bold">Pain Level (0–10)</label>
                   <input
                     type="text"
@@ -618,7 +612,7 @@ export const PatientRegistrationModal = ({ isOpen, onClose, onPatientRegistered,
               <Sparkles className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
               <div>
                 <span className="font-bold block text-white text-[11px]">SECTION 4: ML CARE PRIORITY EVALUATION</span>
-                <span>The care priority is determined automatically by the ML assessment model after clinical intake submission. No manual pre-selection is required.</span>
+                <span>The care priority is determined automatically by the ML assessment model after clinical intake submission based strictly on the measurements provided.</span>
               </div>
             </div>
 

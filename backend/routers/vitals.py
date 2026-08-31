@@ -50,8 +50,8 @@ def record_vital_signs(
         rr=vital_input.rr,
         spo2=vital_input.spo2,
         temp=vital_input.temp,
-        gcs=vital_input.gcs or 15,
-        pain_score=vital_input.pain_score or 0,
+        gcs=vital_input.gcs,
+        pain_score=vital_input.pain_score,
         recorded_by=staff.staff_id,
         notes=vital_input.notes
     )
