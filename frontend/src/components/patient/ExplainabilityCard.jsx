@@ -16,29 +16,29 @@ export const ExplainabilityCard = ({ aiExplanation }) => {
             <Sparkles className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-white tracking-tight">Explainable AI Drivers</h3>
-            <p className="text-[10px] text-slate-400">Exact Mathematical Shapley Contributions</p>
+            <h3 className="text-sm font-bold text-white tracking-tight">Why the AI Made This Assessment</h3>
+            <p className="text-[10px] text-slate-400">Key clinical factors influencing the AI risk calculation</p>
           </div>
         </div>
         <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-indigo-950/80 border border-indigo-800/60 text-indigo-300">
-          {method}
+          AI Explanation (SHAP)
         </span>
       </div>
 
       {/* Clinical Narrative Summary */}
       <div className="bg-slate-950/90 p-3.5 rounded-xl border border-slate-800/80">
-        <div className="text-[10px] uppercase font-bold text-slate-400 mb-1">Model Reasoning Summary</div>
+        <div className="text-[10px] uppercase font-bold text-slate-400 mb-1">Clinical Summary of Reasoning</div>
         <p className="text-xs text-slate-300 leading-relaxed">
           {aiExplanation.summary}
         </p>
       </div>
 
-      {/* Top SHAP Features Table */}
+      {/* Top Features Table */}
       {topFeatures.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center justify-between text-[10px] uppercase font-bold text-slate-400 px-1">
-            <span>Observed Clinical Variable</span>
-            <span>SHAP Attribution Impact</span>
+            <span>Factors Influencing the AI Assessment</span>
+            <span>Impact on Estimated Risk</span>
           </div>
 
           <div className="space-y-2">
@@ -75,7 +75,7 @@ export const ExplainabilityCard = ({ aiExplanation }) => {
                             : 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/60'
                         }`}
                       >
-                        {isElevating ? 'Elevates Risk' : 'Reduces Risk'}
+                        {isElevating ? 'Increases Risk' : 'Reduces Risk'}
                       </span>
                       <span
                         className={`font-mono font-bold text-xs ${
@@ -97,7 +97,7 @@ export const ExplainabilityCard = ({ aiExplanation }) => {
       <div className="flex items-start gap-2 pt-1 p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/60 text-[10px] text-slate-400 leading-relaxed">
         <Info className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
         <span>
-          SHAP values represent localized mathematical contributions to the model&apos;s log-odds estimation and do not establish independent biological causality.
+          Clinical Note: AI factors reflect statistical correlations within observed patient vitals and do not replace professional medical judgment.
         </span>
       </div>
     </div>

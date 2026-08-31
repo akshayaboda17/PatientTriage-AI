@@ -7,6 +7,7 @@ import {
   ShieldCheck, Eye, ArrowUpRight, Flame
 } from 'lucide-react';
 import { LoadingSkeleton, EmptyState, ErrorState, AcuityBadge, SafetyStatusBadge, ConfidenceBadge, AgeGroupBadge } from './common/StateViews';
+import { PRIORITY_LEVELS } from '../utils/terminology';
 
 export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister, onNavigateTab }) => {
   const { authHeaders, hasPermission, addToast, currentStaff, hospital } = useAuth();
@@ -30,7 +31,7 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
       ]);
 
       if (!encRes.ok) {
-        throw new Error(`Failed to load ED patient data (HTTP ${encRes.status})`);
+        throw new Error(`Failed to load emergency department patient data (HTTP ${encRes.status})`);
       }
 
       const encData = await encRes.json();
@@ -42,7 +43,7 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
       }
     } catch (err) {
       console.error('Dashboard data error:', err);
-      setError(err.message || 'Failed to refresh ED dashboard data.');
+      setError(err.message || 'Failed to refresh patient dashboard data.');
     } finally {
       setLoading(false);
     }
@@ -61,7 +62,7 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
         headers: authHeaders
       });
       if (res.ok) {
-        addToast(`Alert ${alertId} acknowledged.`, "success");
+        addToast(`Clinical alert ${alertId} acknowledged.`, "success");
         setAlerts(prev => prev.filter(a => a.alert_id !== alertId));
       }
     } catch (err) {
@@ -71,22 +72,22 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
     }
   };
 
-  // Compute operational aggregates
-  const activeCount = encounters.length;
+  // Operational counts
+  const totalInED = encounters.length;
   const waitingCount = encounters.filter(e => e.status === 'WAITING').length;
   const inTriageCount = encounters.filter(e => e.status === 'IN_TRIAGE').length;
   const inTreatmentCount = encounters.filter(e => e.status === 'IN_TREATMENT').length;
-  const escalateCount = encounters.filter(e => e.safety_status === 'ESCALATE').length;
+  const immediateAttentionCount = encounters.filter(e => e.safety_status === 'ESCALATE').length;
   const reassessCount = encounters.filter(e => e.safety_status === 'REASSESS' || e.reassessment_required).length;
   const highRiskCount = encounters.filter(e => e.triage_level <= 2 || (e.ai_risk && ['HIGH', 'CRITICAL'].includes(e.ai_risk.risk_category))).length;
-  const unackAlertsCount = alerts.length;
+  const activeAlertsCount = alerts.length;
 
   // Average wait time
-  const avgWaitMins = activeCount > 0
-    ? Math.round(encounters.reduce((acc, curr) => acc + (curr.wait_time_mins || 0), 0) / activeCount)
+  const avgWaitMins = totalInED > 0
+    ? Math.round(encounters.reduce((acc, curr) => acc + (curr.wait_time_mins || 0), 0) / totalInED)
     : 0;
 
-  // Sorted Priority Patients (ESI 1-2 first, then ESCALATE/REASSESS, then longest wait)
+  // Sorted Priority Patients (Critical / Immediate first, then time waiting)
   const priorityPatients = [...encounters].sort((a, b) => {
     if (a.triage_level !== b.triage_level) return a.triage_level - b.triage_level;
     const safetyRank = { ESCALATE: 1, REASSESS: 2, MONITOR: 3, STABLE: 4 };
@@ -96,18 +97,17 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
     return (b.wait_time_mins || 0) - (a.wait_time_mins || 0);
   }).slice(0, 8);
 
-  // Triage Distribution Counts
-  const triageDist = [1, 2, 3, 4, 5].map(level => {
+  // Priority Distribution Breakdown
+  const priorityDist = [1, 2, 3, 4, 5].map(level => {
     const count = encounters.filter(e => e.triage_level === level).length;
-    const pct = activeCount > 0 ? Math.round((count / activeCount) * 100) : 0;
+    const pct = totalInED > 0 ? Math.round((count / totalInED) * 100) : 0;
+    const meta = PRIORITY_LEVELS[level];
     return {
       level,
       count,
       pct,
-      label: level === 1 ? 'ESI 1 · Resuscitation' :
-             level === 2 ? 'ESI 2 · Emergent' :
-             level === 3 ? 'ESI 3 · Urgent' :
-             level === 4 ? 'ESI 4 · Less Urgent' : 'ESI 5 · Non-Urgent',
+      label: meta.primary,
+      secondary: meta.secondary,
       color: level === 1 ? 'bg-rose-500' :
              level === 2 ? 'bg-amber-500' :
              level === 3 ? 'bg-yellow-500' :
@@ -126,14 +126,14 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-white tracking-tight">Emergency Department Live Overview</h1>
+              <h1 className="text-xl font-bold text-white tracking-tight">Emergency Department Overview</h1>
               <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-800/60">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
                 LIVE CAPACITY
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Real-time clinical acuity distribution, AI deterioration forecasting, and safe wait threshold governance
+              Real-time patient priority tracking, early condition warnings, and safe wait time monitoring
             </p>
           </div>
         </div>
@@ -142,10 +142,10 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
           {hasPermission('patient:create') && onOpenRegister && (
             <button
               onClick={onOpenRegister}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow-md shadow-cyan-900/30 transition-all cursor-pointer"
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow-md shadow-cyan-900/30 transition-all cursor-pointer"
             >
               <PlusCircle className="w-4 h-4" />
-              <span>Register Patient</span>
+              <span>Add Patient</span>
             </button>
           )}
 
@@ -163,16 +163,16 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
       {/* KPI Cards Strip */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         
-        {/* Active Patients */}
+        {/* Patients Currently in ED */}
         <div 
-          onClick={() => onNavigateTab && onNavigateTab('queue')}
+          onClick={() => onNavigateTab && onNavigateTab('categories')}
           className="bg-slate-900/90 border border-slate-800 p-4.5 rounded-2xl shadow-xl flex items-center justify-between border-l-4 border-l-cyan-500 hover:border-slate-700 cursor-pointer transition-all group"
         >
           <div className="space-y-1">
-            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Active ED Census</div>
+            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Patients Currently in ED</div>
             <div className="flex items-baseline gap-2">
-              <span className="text-3xl font-black text-white font-mono">{activeCount}</span>
-              <span className="text-xs text-slate-400">patients</span>
+              <span className="text-3xl font-black text-white font-mono">{totalInED}</span>
+              <span className="text-xs text-slate-400">total in facility</span>
             </div>
             <div className="text-[10px] text-slate-500">
               {waitingCount} waiting · {inTreatmentCount} in treatment
@@ -183,21 +183,21 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
           </div>
         </div>
 
-        {/* Emergent & Critical Acuity */}
+        {/* Critical & Emergency Priority */}
         <div 
-          onClick={() => onNavigateTab && onNavigateTab('queue')}
+          onClick={() => onNavigateTab && onNavigateTab('categories')}
           className="bg-slate-900/90 border border-slate-800 p-4.5 rounded-2xl shadow-xl flex items-center justify-between border-l-4 border-l-rose-500 hover:border-slate-700 cursor-pointer transition-all group"
         >
           <div className="space-y-1">
-            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Emergent Acuity (ESI 1-2)</div>
+            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Critical &amp; Emergency Priority</div>
             <div className="flex items-baseline gap-2">
               <span className={`text-3xl font-black font-mono ${highRiskCount > 0 ? 'text-rose-400' : 'text-slate-200'}`}>
                 {highRiskCount}
               </span>
-              <span className="text-xs text-slate-400">critical</span>
+              <span className="text-xs text-slate-400">immediate / high priority</span>
             </div>
             <div className="text-[10px] text-slate-500">
-              {escalateCount} safety escalation required
+              {immediateAttentionCount} require immediate attention
             </div>
           </div>
           <div className="p-3 rounded-2xl bg-rose-950/60 border border-rose-800/60 text-rose-400 group-hover:scale-105 transition-transform">
@@ -205,38 +205,38 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
           </div>
         </div>
 
-        {/* Active Clinical Alarms */}
+        {/* Active Clinical Alerts */}
         <div 
           onClick={() => onNavigateTab && onNavigateTab('alerts')}
           className="bg-slate-900/90 border border-slate-800 p-4.5 rounded-2xl shadow-xl flex items-center justify-between border-l-4 border-l-amber-500 hover:border-slate-700 cursor-pointer transition-all group"
         >
           <div className="space-y-1">
-            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Unacknowledged Alarms</div>
+            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Active Clinical Alerts</div>
             <div className="flex items-baseline gap-2">
-              <span className={`text-3xl font-black font-mono ${unackAlertsCount > 0 ? 'text-amber-400 animate-pulse' : 'text-slate-200'}`}>
-                {unackAlertsCount}
+              <span className={`text-3xl font-black font-mono ${activeAlertsCount > 0 ? 'text-amber-400 animate-pulse' : 'text-slate-200'}`}>
+                {activeAlertsCount}
               </span>
-              <span className="text-xs text-slate-400">actionable</span>
+              <span className="text-xs text-slate-400">actionable alerts</span>
             </div>
             <div className="text-[10px] text-slate-500">
-              {reassessCount} need reassessment
+              {reassessCount} require reassessment
             </div>
           </div>
-          <div className={`p-3 rounded-2xl bg-amber-950/60 border border-amber-800/60 text-amber-400 group-hover:scale-105 transition-transform ${unackAlertsCount > 0 ? 'animate-bounce' : ''}`}>
+          <div className={`p-3 rounded-2xl bg-amber-950/60 border border-amber-800/60 text-amber-400 group-hover:scale-105 transition-transform ${activeAlertsCount > 0 ? 'animate-bounce' : ''}`}>
             <Bell className="w-6 h-6" />
           </div>
         </div>
 
-        {/* Avg ED Wait Time */}
+        {/* Average Wait Time */}
         <div className="bg-slate-900/90 border border-slate-800 p-4.5 rounded-2xl shadow-xl flex items-center justify-between border-l-4 border-l-indigo-500">
           <div className="space-y-1">
-            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Avg Waiting Time</div>
+            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Average Wait Time</div>
             <div className="flex items-baseline gap-2">
               <span className="text-3xl font-black text-white font-mono">{avgWaitMins}</span>
               <span className="text-xs text-slate-400">minutes</span>
             </div>
             <div className="text-[10px] text-slate-500">
-              Safe limit: ESI 1 (0m) · ESI 2 (10m)
+              Safe guidelines: Immediate (0m) · Emergency (10-15m)
             </div>
           </div>
           <div className="p-3 rounded-2xl bg-indigo-950/60 border border-indigo-800/60 text-indigo-400">
@@ -245,7 +245,7 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
         </div>
       </div>
 
-      {/* Main Grid: Priority Patient Queue + Clinical Intelligence Panel */}
+      {/* Main Grid: Priority Patients + Care Priority Breakdown */}
       {loading ? (
         <LoadingSkeleton type="table" rows={6} />
       ) : error ? (
@@ -253,7 +253,7 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           
-          {/* LEFT 2 COLUMNS: Priority ED Patients */}
+          {/* LEFT 2 COLUMNS: Patients Waiting for Care by Priority */}
           <div className="lg:col-span-2 space-y-4">
             <div className="bg-slate-900/90 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
               
@@ -263,16 +263,16 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
                     <ShieldAlert className="w-4 h-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-bold text-white">Priority ED Clinical Queue</h3>
-                    <p className="text-[10px] text-slate-400">Ranked by ESI acuity, deterioration risk, and waiting threshold</p>
+                    <h3 className="text-sm font-bold text-white">Patients in Care by Priority</h3>
+                    <p className="text-[10px] text-slate-400">Ordered by care priority, possible condition change, and time waiting</p>
                   </div>
                 </div>
 
                 <button
-                  onClick={() => onNavigateTab && onNavigateTab('queue')}
+                  onClick={() => onNavigateTab && onNavigateTab('categories')}
                   className="flex items-center gap-1 text-xs font-bold text-cyan-400 hover:text-cyan-300 transition-colors cursor-pointer"
                 >
-                  <span>View Full Queue ({encounters.length})</span>
+                  <span>View All Categories ({encounters.length})</span>
                   <ChevronRight className="w-3.5 h-3.5" />
                 </button>
               </div>
@@ -280,9 +280,9 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
               {priorityPatients.length === 0 ? (
                 <EmptyState
                   icon={CheckCircle2}
-                  title="No Patients in ED Queue"
-                  description="The emergency department waiting queue is currently clear."
-                  actionText={hasPermission('patient:create') ? "Register Patient" : undefined}
+                  title="No Patients Currently in Queue"
+                  description="The emergency department waiting area is currently clear."
+                  actionText={hasPermission('patient:create') ? "Add Patient" : undefined}
                   onAction={onOpenRegister}
                 />
               ) : (
@@ -290,28 +290,28 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
                   <table className="w-full text-left text-xs text-slate-300">
                     <thead className="bg-slate-950/50 text-slate-400 uppercase text-[10px] font-bold border-b border-slate-800">
                       <tr>
-                        <th className="px-4 py-3">Acuity</th>
+                        <th className="px-4 py-3">Care Priority</th>
                         <th className="px-4 py-3">Patient &amp; Demographics</th>
                         <th className="px-4 py-3">Chief Complaint</th>
-                        <th className="px-4 py-3">AI Risk &amp; Conf</th>
-                        <th className="px-4 py-3">Safety State</th>
-                        <th className="px-4 py-3">Wait Time</th>
+                        <th className="px-4 py-3">AI Risk &amp; Confidence</th>
+                        <th className="px-4 py-3">Care Status</th>
+                        <th className="px-4 py-3">Time Waiting</th>
                         <th className="px-4 py-3 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/60">
                       {priorityPatients.map((patient) => {
                         const isBreached = patient.wait_time_mins > (patient.safe_wait_threshold_mins || 60);
-                        const isEscalate = patient.safety_status === 'ESCALATE';
+                        const isImmediate = patient.safety_status === 'ESCALATE';
                         return (
                           <tr
                             key={patient.encounter_id}
                             onClick={() => onSelectPatient && onSelectPatient(patient.encounter_id)}
                             className={`hover:bg-slate-800/40 transition-colors cursor-pointer ${
-                              isEscalate ? 'bg-rose-950/20' : ''
+                              isImmediate ? 'bg-rose-950/20' : ''
                             }`}
                           >
-                            {/* Acuity */}
+                            {/* Care Priority */}
                             <td className="px-4 py-3.5 whitespace-nowrap">
                               <AcuityBadge level={patient.triage_level} />
                             </td>
@@ -321,7 +321,7 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
                               <div className="font-bold text-slate-100 text-xs">{patient.patient_name}</div>
                               <div className="flex items-center gap-1.5 mt-0.5">
                                 <AgeGroupBadge ageGroup={patient.age_group} age={patient.age} />
-                                <span className="text-[10px] text-slate-500 font-mono">#{patient.encounter_id}</span>
+                                <span className="text-[10px] text-slate-500 font-mono">Visit #{patient.encounter_id}</span>
                               </div>
                             </td>
 
@@ -330,47 +330,49 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
                               {patient.chief_complaint}
                             </td>
 
-                            {/* AI Risk Score */}
+                            {/* AI Risk Score & Confidence */}
                             <td className="px-4 py-3.5 whitespace-nowrap font-mono">
                               {patient.ai_risk ? (
-                                <div className="flex items-center gap-1.5">
-                                  <span className={`font-bold ${
-                                    patient.ai_risk.risk_category === 'HIGH' || patient.ai_risk.risk_category === 'CRITICAL'
-                                      ? 'text-rose-400'
-                                      : patient.ai_risk.risk_category === 'MODERATE'
-                                      ? 'text-amber-400'
-                                      : 'text-emerald-400'
-                                  }`}>
-                                    {patient.ai_risk.risk_probability !== undefined
-                                      ? `${(patient.ai_risk.risk_probability * 100).toFixed(0)}%`
-                                      : `${patient.ai_risk.risk_score}%`}
-                                  </span>
+                                <div className="space-y-0.5">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className={`font-bold ${
+                                      patient.ai_risk.risk_category === 'HIGH' || patient.ai_risk.risk_category === 'CRITICAL'
+                                        ? 'text-rose-400'
+                                        : patient.ai_risk.risk_category === 'MODERATE'
+                                        ? 'text-amber-400'
+                                        : 'text-emerald-400'
+                                    }`}>
+                                      {patient.ai_risk.risk_probability !== undefined
+                                        ? `${(patient.ai_risk.risk_probability * 100).toFixed(0)}%`
+                                        : `${patient.ai_risk.risk_score}%`} Estimated Risk
+                                    </span>
+                                  </div>
                                   <ConfidenceBadge confidence={patient.ai_risk.confidence || 'HIGH'} />
                                 </div>
                               ) : (
-                                <span className="text-slate-600 text-[10px]">Pending AI</span>
+                                <span className="text-slate-600 text-[10px]">Triage Assigned</span>
                               )}
                             </td>
 
-                            {/* Safety Workflow Status */}
+                            {/* Care Status */}
                             <td className="px-4 py-3.5 whitespace-nowrap">
                               <SafetyStatusBadge status={patient.safety_status} />
                             </td>
 
-                            {/* Wait Time */}
+                            {/* Time Waiting */}
                             <td className="px-4 py-3.5 whitespace-nowrap font-mono">
                               <div className="flex items-center gap-1 text-slate-300">
                                 <Clock className="w-3 h-3 text-slate-500" />
-                                <span>{patient.wait_time_mins || 0}m</span>
+                                <span>{patient.wait_time_mins || 0} mins</span>
                               </div>
                               {isBreached && (
                                 <span className="text-[9px] font-bold text-rose-400 bg-rose-950/80 px-1.5 py-0.5 rounded border border-rose-800/60 block mt-0.5">
-                                  BREACHED
+                                  Safe Wait Time Exceeded
                                 </span>
                               )}
                             </td>
 
-                            {/* Quick Action */}
+                            {/* Actions */}
                             <td className="px-4 py-3.5 text-right whitespace-nowrap">
                               <div className="flex items-center justify-end gap-1.5">
                                 {hasPermission('physician:review') && onReviewPatient && (
@@ -380,7 +382,7 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
                                       onReviewPatient(patient.encounter_id);
                                     }}
                                     className="p-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600 text-indigo-300 hover:text-white border border-indigo-500/30 transition-all cursor-pointer"
-                                    title="Physician Review"
+                                    title="Physician Review & Clinical Decision"
                                   >
                                     <Stethoscope className="w-3.5 h-3.5" />
                                   </button>
@@ -391,7 +393,7 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
                                     onSelectPatient && onSelectPatient(patient.encounter_id);
                                   }}
                                   className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-all cursor-pointer"
-                                  title="View Chart"
+                                  title="View Patient Care Workspace"
                                 >
                                   <Eye className="w-3.5 h-3.5" />
                                 </button>
@@ -407,24 +409,27 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
             </div>
           </div>
 
-          {/* RIGHT 1 COLUMN: Clinical Intelligence Panel & Alarms */}
+          {/* RIGHT 1 COLUMN: Care Priority Breakdown & Live Alerts */}
           <div className="space-y-4">
             
-            {/* Triage Distribution Bar Chart */}
+            {/* Priority Distribution Bar Chart */}
             <div className="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl space-y-4">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                 <div className="flex items-center gap-2">
                   <BarChart2 className="w-4 h-4 text-cyan-400" />
-                  <h3 className="text-sm font-bold text-white">Acuity Distribution</h3>
+                  <h3 className="text-sm font-bold text-white">Care Priority Breakdown</h3>
                 </div>
-                <span className="text-[10px] font-mono text-slate-400">{activeCount} Total</span>
+                <span className="text-[10px] font-mono text-slate-400">{totalInED} Total Patients</span>
               </div>
 
               <div className="space-y-2.5">
-                {triageDist.map((item) => (
+                {priorityDist.map((item) => (
                   <div key={item.level} className="space-y-1">
                     <div className="flex items-center justify-between text-xs font-mono">
-                      <span className="text-slate-300 text-[11px] font-sans">{item.label}</span>
+                      <div className="flex items-center gap-1.5 text-[11px] font-sans text-slate-300">
+                        <span className="font-semibold">{item.label}</span>
+                        <span className="text-[10px] text-slate-500">({item.secondary})</span>
+                      </div>
                       <span className="text-slate-400 text-[11px]">
                         <strong>{item.count}</strong> ({item.pct}%)
                       </span>
@@ -440,16 +445,16 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
               </div>
             </div>
 
-            {/* Recent Unacknowledged Alerts Feed */}
+            {/* Active Clinical Alerts Feed */}
             <div className="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl space-y-3.5">
               <div className="flex items-center justify-between border-b border-slate-800 pb-3">
                 <div className="flex items-center gap-2">
                   <ShieldAlert className="w-4 h-4 text-amber-400" />
-                  <h3 className="text-sm font-bold text-white">Active Clinical Alarms</h3>
+                  <h3 className="text-sm font-bold text-white">Active Clinical Alerts</h3>
                 </div>
                 {alerts.length > 0 && (
                   <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-600 text-white animate-pulse">
-                    {alerts.length} New
+                    {alerts.length} Actionable
                   </span>
                 )}
               </div>
@@ -457,8 +462,8 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
               {alerts.length === 0 ? (
                 <div className="text-center py-6 space-y-2">
                   <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
-                  <p className="text-xs font-bold text-slate-300">All Alarms Clear</p>
-                  <p className="text-[11px] text-slate-500">No active deterioration alarms pending acknowledgment.</p>
+                  <p className="text-xs font-bold text-slate-300">All Clinical Alerts Resolved</p>
+                  <p className="text-[11px] text-slate-500">No active patient condition warnings pending review.</p>
                 </div>
               ) : (
                 <div className="space-y-2.5">
@@ -475,7 +480,7 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
                             alert.severity === 'HIGH' ? 'bg-amber-500' : 'bg-yellow-500'
                           }`} />
                           <span className="text-xs font-bold text-slate-200 truncate max-w-[160px]">
-                            {alert.patient_name || alert.alert_type}
+                            {alert.patient_name || 'Patient'}
                           </span>
                         </div>
                         <span className="text-[10px] font-mono text-slate-500">
@@ -483,19 +488,19 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
                         </span>
                       </div>
 
-                      <p className="text-[11px] text-slate-400 leading-snug line-clamp-2">
+                      <p className="text-[11px] text-slate-300 leading-snug line-clamp-2">
                         {alert.message}
                       </p>
 
                       <div className="flex items-center justify-between pt-1 text-[10px]">
-                        <span className="text-slate-500 font-mono">#{alert.encounter_id || alert.alert_id}</span>
+                        <span className="text-slate-500 font-mono">Visit #{alert.encounter_id || alert.alert_id}</span>
                         {hasPermission('alert:acknowledge') && (
                           <button
                             onClick={(e) => handleQuickAcknowledge(e, alert.alert_id)}
                             disabled={acknowledgingId === alert.alert_id}
-                            className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold border border-slate-700 transition-colors cursor-pointer"
+                            className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 font-bold border border-slate-700 transition-colors cursor-pointer"
                           >
-                            {acknowledgingId === alert.alert_id ? 'Acknowledging...' : 'Acknowledge'}
+                            {acknowledgingId === alert.alert_id ? 'Acknowledging...' : 'Acknowledge Alert'}
                           </button>
                         )}
                       </div>
@@ -507,7 +512,7 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
                       onClick={() => onNavigateTab && onNavigateTab('alerts')}
                       className="w-full py-2 text-center text-xs font-bold text-cyan-400 hover:text-cyan-300 bg-slate-950 rounded-xl border border-slate-800 transition-colors cursor-pointer"
                     >
-                      View All {alerts.length} Alarms →
+                      View All {alerts.length} Clinical Alerts →
                     </button>
                   )}
                 </div>

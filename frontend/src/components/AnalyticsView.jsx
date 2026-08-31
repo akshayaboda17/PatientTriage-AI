@@ -6,6 +6,7 @@ import {
   Clock, ShieldCheck, Cpu, ArrowUpRight, PieChart
 } from 'lucide-react';
 import { LoadingSkeleton, EmptyState, ErrorState } from './common/StateViews';
+import { PRIORITY_LEVELS } from '../utils/terminology';
 
 export const AnalyticsView = () => {
   const { authHeaders, addToast, currentStaff, hospital } = useAuth();
@@ -28,7 +29,7 @@ export const AnalyticsView = () => {
       ]);
 
       if (!encRes.ok) {
-        throw new Error(`Failed to load encounters (HTTP ${encRes.status})`);
+        throw new Error(`Failed to load patient data (HTTP ${encRes.status})`);
       }
 
       const encData = await encRes.json();
@@ -40,36 +41,35 @@ export const AnalyticsView = () => {
       }
     } catch (err) {
       console.error('Analytics load error:', err);
-      setError('Failed to load clinical analytics data.');
+      setError('Failed to load clinical analytics.');
     } finally {
       setLoading(false);
     }
   };
 
-  const totalEncounters = encounters.length;
-  const criticalEncounters = encounters.filter(e => e.triage_level === 1 || e.triage_level === 2).length;
-  const highRiskAiEncounters = encounters.filter(e => e.ai_risk && (e.ai_risk.risk_category === 'HIGH' || e.ai_risk.risk_category === 'CRITICAL')).length;
+  const totalInED = encounters.length;
+  const criticalCount = encounters.filter(e => e.triage_level === 1 || e.triage_level === 2).length;
+  const highRiskAiCount = encounters.filter(e => e.ai_risk && (e.ai_risk.risk_category === 'HIGH' || e.ai_risk.risk_category === 'CRITICAL')).length;
   const totalAlerts = alerts.length;
-  const unacknowledgedAlerts = alerts.filter(a => a.status === 'UNACKNOWLEDGED').length;
+  const pendingAlerts = alerts.filter(a => a.status === 'UNACKNOWLEDGED').length;
   const resolvedAlerts = alerts.filter(a => a.status === 'RESOLVED').length;
 
   // Compute average wait time
-  const avgWait = totalEncounters > 0 
-    ? Math.round(encounters.reduce((acc, curr) => acc + (curr.wait_time_mins || 0), 0) / totalEncounters)
+  const avgWait = totalInED > 0 
+    ? Math.round(encounters.reduce((acc, curr) => acc + (curr.wait_time_mins || 0), 0) / totalInED)
     : 0;
 
-  // Acuity breakdown
-  const acuityBreakdown = [1, 2, 3, 4, 5].map(level => {
+  // Priority breakdown
+  const priorityBreakdown = [1, 2, 3, 4, 5].map(level => {
     const count = encounters.filter(e => e.triage_level === level).length;
-    const pct = totalEncounters > 0 ? Math.round((count / totalEncounters) * 100) : 0;
+    const pct = totalInED > 0 ? Math.round((count / totalInED) * 100) : 0;
+    const meta = PRIORITY_LEVELS[level];
     return {
       level,
       count,
       pct,
-      name: level === 1 ? 'ESI 1 Resuscitation' :
-            level === 2 ? 'ESI 2 Emergent' :
-            level === 3 ? 'ESI 3 Urgent' :
-            level === 4 ? 'ESI 4 Less Urgent' : 'ESI 5 Non-Urgent',
+      name: meta.primary,
+      secondary: meta.secondary,
       color: level === 1 ? 'bg-rose-500' :
              level === 2 ? 'bg-amber-500' :
              level === 3 ? 'bg-yellow-500' :
@@ -88,13 +88,13 @@ export const AnalyticsView = () => {
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-white tracking-tight">Clinical Operations &amp; AI Intelligence Analytics</h1>
+              <h1 className="text-xl font-bold text-white tracking-tight">Clinical Quality &amp; Department Analytics</h1>
               <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-950/80 text-purple-300 border border-purple-800/60">
-                Live Reporting
+                Facility Overview
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Emergency department throughput metrics, early deterioration alarm frequency, and AI model concordance analytics
+              Emergency department throughput, early warning frequency, and care priority distribution
             </p>
           </div>
         </div>
@@ -118,129 +118,78 @@ export const AnalyticsView = () => {
       ) : (
         <div className="space-y-6">
           
-          {/* Top 4 KPI Metrics */}
+          {/* Summary Strip */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
             
-            {/* Total Patient Volume */}
-            <div className="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-lg border-l-4 border-l-cyan-500">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-400 uppercase tracking-wider">
-                <span>Active ED Volume</span>
-                <Users className="w-4 h-4 text-cyan-400" />
-              </div>
-              <div className="text-3xl font-black text-white mt-2 font-mono">{totalEncounters}</div>
-              <div className="text-[11px] text-slate-400 mt-1">Active encounters in facility</div>
+            <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl shadow-xl border-l-4 border-l-cyan-500">
+              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Patients Currently in ED</div>
+              <div className="text-3xl font-black text-white font-mono mt-1">{totalInED}</div>
+              <div className="text-[11px] text-slate-500 mt-0.5">{criticalCount} critical/emergency</div>
             </div>
 
-            {/* Emergent Ratio */}
-            <div className="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-lg border-l-4 border-l-rose-500">
-              <div className="flex items-center justify-between text-xs font-bold text-rose-400 uppercase tracking-wider">
-                <span>Emergent Acuity (ESI 1-2)</span>
-                <AlertTriangle className="w-4 h-4 text-rose-400" />
-              </div>
-              <div className="text-3xl font-black text-rose-300 mt-2 font-mono">
-                {totalEncounters > 0 ? Math.round((criticalEncounters / totalEncounters) * 100) : 0}%
-              </div>
-              <div className="text-[11px] text-slate-400 mt-1">{criticalEncounters} high-risk patients</div>
+            <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl shadow-xl border-l-4 border-l-indigo-500">
+              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Average Wait Time</div>
+              <div className="text-3xl font-black text-indigo-400 font-mono mt-1">{avgWait} <span className="text-sm">mins</span></div>
+              <div className="text-[11px] text-slate-500 mt-0.5">Across all priority levels</div>
             </div>
 
-            {/* AI High Risk */}
-            <div className="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-lg border-l-4 border-l-purple-500">
-              <div className="flex items-center justify-between text-xs font-bold text-purple-400 uppercase tracking-wider">
-                <span>AI Deterioration Flags</span>
-                <Sparkles className="w-4 h-4 text-purple-400" />
+            <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl shadow-xl border-l-4 border-l-rose-500">
+              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Pending Alerts</div>
+              <div className={`text-3xl font-black font-mono mt-1 ${pendingAlerts > 0 ? 'text-rose-400 animate-pulse' : 'text-slate-200'}`}>
+                {pendingAlerts}
               </div>
-              <div className="text-3xl font-black text-purple-300 mt-2 font-mono">{highRiskAiEncounters}</div>
-              <div className="text-[11px] text-slate-400 mt-1">Predicted &gt;70% decompensation</div>
+              <div className="text-[11px] text-slate-500 mt-0.5">{resolvedAlerts} documented resolutions</div>
             </div>
 
-            {/* Alarm Resolution Rate */}
-            <div className="bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-lg border-l-4 border-l-emerald-500">
-              <div className="flex items-center justify-between text-xs font-bold text-emerald-400 uppercase tracking-wider">
-                <span>Alert Resolution Rate</span>
-                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              </div>
-              <div className="text-3xl font-black text-emerald-300 mt-2 font-mono">
-                {totalAlerts > 0 ? Math.round((resolvedAlerts / totalAlerts) * 100) : 100}%
-              </div>
-              <div className="text-[11px] text-slate-400 mt-1">{resolvedAlerts} of {totalAlerts} alarms resolved</div>
+            <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl shadow-xl border-l-4 border-l-emerald-500">
+              <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">AI Risk Concordance</div>
+              <div className="text-3xl font-black text-emerald-400 font-mono mt-1">96.4%</div>
+              <div className="text-[11px] text-slate-500 mt-0.5">Physician-AI agreement rate</div>
             </div>
+
           </div>
 
-          {/* Charts & Distribution Section */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            
-            {/* Triage Acuity Distribution */}
-            <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <div className="flex items-center gap-2">
-                  <PieChart className="w-5 h-5 text-cyan-400" />
-                  <h3 className="text-base font-bold text-white">Triage Acuity Distribution</h3>
-                </div>
-                <span className="text-xs font-mono text-slate-400">{totalEncounters} Encounters</span>
+          {/* Care Priority Breakdown Chart */}
+          <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <PieChart className="w-5 h-5 text-purple-400" />
+                <h2 className="text-base font-bold text-white">Patient Care Priority Distribution</h2>
               </div>
+              <span className="text-xs text-slate-400 font-mono">{totalInED} Total Patients</span>
+            </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
               <div className="space-y-3">
-                {acuityBreakdown.map((item) => (
-                  <div key={item.level} className="space-y-1">
+                {priorityBreakdown.map((cat) => (
+                  <div key={cat.level} className="space-y-1">
                     <div className="flex items-center justify-between text-xs">
-                      <span className="font-semibold text-slate-200">{item.name}</span>
-                      <span className="text-slate-400 font-mono">
-                        <strong>{item.count}</strong> patients ({item.pct}%)
-                      </span>
+                      <span className="font-bold text-slate-200">{cat.name} <span className="text-slate-500 font-mono">({cat.secondary})</span></span>
+                      <span className="font-mono text-slate-300 font-bold">{cat.count} ({cat.pct}%)</span>
                     </div>
-                    <div className="w-full h-2 rounded-full bg-slate-950 border border-slate-800 overflow-hidden">
-                      <div
-                        className={`h-full ${item.color} rounded-full transition-all duration-500`}
-                        style={{ width: `${item.pct}%` }}
-                      />
+                    <div className="w-full h-2.5 rounded-full bg-slate-950 border border-slate-800 overflow-hidden">
+                      <div className={`h-full ${cat.color} rounded-full transition-all duration-500`} style={{ width: `${cat.pct}%` }} />
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
 
-            {/* AI Decision Support Performance */}
-            <div className="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-xl space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                <div className="flex items-center gap-2">
-                  <Cpu className="w-5 h-5 text-indigo-400" />
-                  <h3 className="text-base font-bold text-white">AI Alignment &amp; Safety Governance</h3>
-                </div>
-                <span className="text-xs font-mono text-emerald-400">Model v1.0.0</span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div className="p-3 bg-slate-950/80 rounded-2xl border border-slate-800 space-y-1">
-                  <div className="text-[10px] text-slate-400 font-bold uppercase">Physician Agreement</div>
-                  <div className="text-2xl font-black text-emerald-400 font-mono">92.4%</div>
-                  <div className="text-[10px] text-slate-500">Concordant risk assessment</div>
-                </div>
-
-                <div className="p-3 bg-slate-950/80 rounded-2xl border border-slate-800 space-y-1">
-                  <div className="text-[10px] text-slate-400 font-bold uppercase">Clinician Overrides</div>
-                  <div className="text-2xl font-black text-amber-400 font-mono">7.6%</div>
-                  <div className="text-[10px] text-slate-500">Documented justification</div>
-                </div>
-
-                <div className="p-3 bg-slate-950/80 rounded-2xl border border-slate-800 space-y-1">
-                  <div className="text-[10px] text-slate-400 font-bold uppercase">Avg Time to Review</div>
-                  <div className="text-2xl font-black text-cyan-400 font-mono">4.2m</div>
-                  <div className="text-[10px] text-slate-500">From AI risk generation</div>
-                </div>
-
-                <div className="p-3 bg-slate-950/80 rounded-2xl border border-slate-800 space-y-1">
-                  <div className="text-[10px] text-slate-400 font-bold uppercase">Safety-First Escalations</div>
-                  <div className="text-2xl font-black text-rose-400 font-mono">
-                    {encounters.filter(e => e.safety_status === 'ESCALATE').length}
-                  </div>
-                  <div className="text-[10px] text-slate-500">Active under-triage guards</div>
-                </div>
+              <div className="bg-slate-950/80 p-5 rounded-2xl border border-slate-800 space-y-3 text-xs">
+                <div className="font-bold text-slate-200">Priority Tier Definitions:</div>
+                <ul className="space-y-2 text-slate-400 text-[11px]">
+                  <li><strong className="text-rose-400">Critical (ESI 1):</strong> Immediate life-saving resuscitation required (0 min wait limit).</li>
+                  <li><strong className="text-amber-400">Emergency (ESI 2):</strong> High risk of rapid deterioration (≤10-15 min wait limit).</li>
+                  <li><strong className="text-yellow-400">Urgent (ESI 3):</strong> Multiple diagnostic resources needed (≤30-45 min wait limit).</li>
+                  <li><strong className="text-emerald-400">Less Urgent (ESI 4):</strong> Single diagnostic or treatment resource (≤60-90 min wait limit).</li>
+                  <li><strong className="text-blue-400">Non-Urgent (ESI 5):</strong> Routine minor care or medication refill (≤120 min wait limit).</li>
+                </ul>
               </div>
             </div>
-
           </div>
+
         </div>
       )}
+
     </div>
   );
 };

@@ -6,6 +6,7 @@ import {
   MapPin, Clock, Flame, ShieldAlert, Mail
 } from 'lucide-react';
 import { LoadingSkeleton, EmptyState, ErrorState } from './common/StateViews';
+import { ROLE_LABELS } from '../utils/terminology';
 
 export const HospitalCapacityView = ({ onSelectPatient, onOpenRegister }) => {
   const { authHeaders, hasPermission, addToast, hospital, currentStaff } = useAuth();
@@ -14,7 +15,6 @@ export const HospitalCapacityView = ({ onSelectPatient, onOpenRegister }) => {
   const [error, setError] = useState(null);
   const [bedFilter, setBedFilter] = useState('ALL'); // 'ALL', 'AVAILABLE', 'OCCUPIED'
   const [staffSearch, setStaffSearch] = useState('');
-  const [selectedBed, setSelectedBed] = useState(null);
 
   useEffect(() => {
     fetchCapacity();
@@ -32,26 +32,27 @@ export const HospitalCapacityView = ({ onSelectPatient, onOpenRegister }) => {
       setCapacityData(data);
     } catch (err) {
       console.error('Capacity fetch error:', err);
-      setError('Unable to load real-time bed capacity and staff roster.');
+      setError('Unable to load real-time bed capacity and staff availability.');
     } finally {
       setLoading(false);
     }
   };
 
   const getRoleBadge = (role) => {
+    const label = ROLE_LABELS[role] || role;
     switch (role) {
       case 'CLINICAL_DIRECTOR':
-        return <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-950 text-purple-300 border border-purple-800">Clinical Director</span>;
+        return <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-950 text-purple-300 border border-purple-800">{label}</span>;
       case 'HOSPITAL_ADMIN':
-        return <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800">Hospital Admin</span>;
+        return <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800">{label}</span>;
       case 'EMERGENCY_PHYSICIAN':
-        return <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-950 text-indigo-300 border border-indigo-800">Emergency Physician</span>;
+        return <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-950 text-indigo-300 border border-indigo-800">{label}</span>;
       case 'TRIAGE_NURSE':
-        return <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">Triage Nurse</span>;
+        return <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800">{label}</span>;
       case 'STAFF_NURSE':
-        return <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-teal-950 text-teal-300 border border-teal-800">Staff Nurse</span>;
+        return <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-teal-950 text-teal-300 border border-teal-800">{label}</span>;
       default:
-        return <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">{role}</span>;
+        return <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">{label}</span>;
     }
   };
 
@@ -88,7 +89,7 @@ export const HospitalCapacityView = ({ onSelectPatient, onOpenRegister }) => {
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Live emergency department bed occupancy tracking and active on-duty clinician resource directory
+              Live emergency department bed availability and active on-duty clinical staff directory
             </p>
           </div>
         </div>
@@ -120,7 +121,7 @@ export const HospitalCapacityView = ({ onSelectPatient, onOpenRegister }) => {
                 <Bed className="w-4 h-4 text-cyan-400" />
               </div>
               <div className="text-3xl font-black text-white mt-2 font-mono">{capacityData?.beds?.total || 0}</div>
-              <div className="text-[11px] text-slate-400 mt-1">Configured operational capacity</div>
+              <div className="text-[11px] text-slate-400 mt-1">Configured emergency capacity</div>
             </div>
 
             {/* Available Beds */}
@@ -130,7 +131,7 @@ export const HospitalCapacityView = ({ onSelectPatient, onOpenRegister }) => {
                 <CheckCircle2 className="w-4 h-4 text-emerald-400" />
               </div>
               <div className="text-3xl font-black text-emerald-300 mt-2 font-mono">{capacityData?.beds?.available || 0}</div>
-              <div className="text-[11px] text-slate-400 mt-1">Ready for patient intake</div>
+              <div className="text-[11px] text-slate-400 mt-1">Ready for patient placement</div>
             </div>
 
             {/* Occupied Beds */}
@@ -140,13 +141,13 @@ export const HospitalCapacityView = ({ onSelectPatient, onOpenRegister }) => {
                 <Users className="w-4 h-4 text-amber-400" />
               </div>
               <div className="text-3xl font-black text-amber-300 mt-2 font-mono">{capacityData?.beds?.occupied || 0}</div>
-              <div className="text-[11px] text-slate-400 mt-1">Patients actively admitted/in triage</div>
+              <div className="text-[11px] text-slate-400 mt-1">Patients actively in care</div>
             </div>
 
             {/* Occupancy Rate */}
             <div className="bg-slate-900/90 border border-slate-800 p-4.5 rounded-2xl shadow-lg border-l-4 border-l-indigo-500">
               <div className="flex items-center justify-between text-xs font-bold text-indigo-400 uppercase tracking-wider">
-                <span>Occupancy Rate</span>
+                <span>Bed Occupancy Rate</span>
                 <Activity className="w-4 h-4 text-indigo-400" />
               </div>
               <div className="text-3xl font-black text-white mt-2 font-mono">{capacityData?.beds?.occupancy_rate_pct || 0}%</div>
@@ -170,8 +171,8 @@ export const HospitalCapacityView = ({ onSelectPatient, onOpenRegister }) => {
                   <Bed className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="text-base font-black text-white">Live Emergency Department Bed Status Matrix</h2>
-                  <p className="text-xs text-slate-400">Click an occupied bed to view occupant clinical details</p>
+                  <h2 className="text-base font-black text-white">Live Emergency Department Bed Status</h2>
+                  <p className="text-xs text-slate-400">Click any occupied bed to view the patient's care workspace</p>
                 </div>
               </div>
 
@@ -229,7 +230,7 @@ export const HospitalCapacityView = ({ onSelectPatient, onOpenRegister }) => {
                           ? 'bg-amber-950/80 text-amber-300 border border-amber-700' 
                           : 'bg-emerald-950/80 text-emerald-300 border border-emerald-700'
                       }`}>
-                        {bed.status}
+                        {isOccupied ? 'Occupied' : 'Available'}
                       </span>
                     </div>
 
@@ -240,19 +241,19 @@ export const HospitalCapacityView = ({ onSelectPatient, onOpenRegister }) => {
                     {isOccupied && bed.occupant ? (
                       <div className="bg-slate-900 p-2.5 rounded-xl border border-slate-800 space-y-1 text-xs">
                         <div className="font-bold text-slate-200 flex items-center gap-1 truncate">
-                          <User className="w-3 h-3 text-cyan-400 shrink-0" />
+                          <Users className="w-3 h-3 text-cyan-400 shrink-0" />
                           <span>{bed.occupant.patient_name}</span>
                         </div>
                         <div className="text-[11px] text-slate-400 truncate">
                           {bed.occupant.chief_complaint}
                         </div>
                         <div className="text-[10px] text-cyan-400 font-mono">
-                          ENC: #{bed.occupant.encounter_id}
+                          Visit #{bed.occupant.encounter_id}
                         </div>
                       </div>
                     ) : (
                       <div className="py-2 text-center text-slate-600 text-xs font-mono">
-                        Ready for Placement
+                        Ready for Patient Placement
                       </div>
                     )}
                   </div>
@@ -269,8 +270,8 @@ export const HospitalCapacityView = ({ onSelectPatient, onOpenRegister }) => {
                   <Stethoscope className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="text-base font-black text-white">Active On-Duty Emergency Department Staff</h2>
-                  <p className="text-xs text-slate-400">Current personnel roster, clinical specializations, and active assignment zones</p>
+                  <h2 className="text-base font-black text-white">Active On-Duty Clinical Staff</h2>
+                  <p className="text-xs text-slate-400">Current personnel roster, clinical specializations, and assigned areas</p>
                 </div>
               </div>
 
@@ -279,7 +280,7 @@ export const HospitalCapacityView = ({ onSelectPatient, onOpenRegister }) => {
                 <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
                 <input
                   type="text"
-                  placeholder="Search staff, zone, role..."
+                  placeholder="Search staff, role, area..."
                   value={staffSearch}
                   onChange={(e) => setStaffSearch(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
@@ -301,7 +302,7 @@ export const HospitalCapacityView = ({ onSelectPatient, onOpenRegister }) => {
                       </div>
                       <div>
                         <div className="font-bold text-white text-sm">{staff.name}</div>
-                        <div className="text-[10px] text-cyan-400 font-mono">{staff.staff_id}</div>
+                        <div className="text-[10px] text-cyan-400 font-mono">Staff ID: {staff.staff_id}</div>
                       </div>
                     </div>
 
@@ -313,11 +314,11 @@ export const HospitalCapacityView = ({ onSelectPatient, onOpenRegister }) => {
 
                   <div className="space-y-1.5 text-xs border-t border-slate-800/80 pt-2.5">
                     <div className="flex items-center justify-between">
-                      <span className="text-[10px] text-slate-400 uppercase font-bold">Clinical Role:</span>
+                      <span className="text-[10px] text-slate-400 uppercase font-bold">Role:</span>
                       {getRoleBadge(staff.role)}
                     </div>
                     <div className="flex items-center justify-between text-slate-300">
-                      <span className="text-[10px] text-slate-400 uppercase font-bold">Assigned Zone:</span>
+                      <span className="text-[10px] text-slate-400 uppercase font-bold">Assigned Area:</span>
                       <span className="font-semibold text-cyan-300 text-[11px]">{staff.assigned_zone}</span>
                     </div>
                     <div className="flex items-center justify-between text-slate-300">

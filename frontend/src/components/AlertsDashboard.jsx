@@ -33,7 +33,7 @@ export const AlertsDashboard = ({ onSelectPatient, onAlertStateChanged }) => {
     try {
       const res = await fetch('/api/alerts', { headers: authHeaders });
       if (res.status === 403) {
-        setError("Access Denied: Your role does not have permission to view clinical alerts.");
+        setError("Access Denied: You need permission to view clinical alerts.");
         return;
       }
       if (!res.ok) {
@@ -44,7 +44,7 @@ export const AlertsDashboard = ({ onSelectPatient, onAlertStateChanged }) => {
       setMetrics(data.metrics || {});
     } catch (err) {
       console.error('Alerts fetch error:', err);
-      setError(err.message || 'Failed to load clinical alerts.');
+      setError('Unable to load clinical alerts. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -63,8 +63,7 @@ export const AlertsDashboard = ({ onSelectPatient, onAlertStateChanged }) => {
         headers: authHeaders
       });
       if (res.ok) {
-        const data = await res.json();
-        addToast(`Alert ${alertId} acknowledged successfully by ${currentStaff.name}.`, 'success');
+        addToast(`Clinical alert acknowledged by ${currentStaff.name}.`, 'success');
         fetchAlerts();
         if (onAlertStateChanged) onAlertStateChanged();
       } else {
@@ -86,7 +85,7 @@ export const AlertsDashboard = ({ onSelectPatient, onAlertStateChanged }) => {
   const handleSubmitAction = async (e) => {
     e.preventDefault();
     if (!actionReason.trim()) {
-      addToast("Clinical documentation / justification note is required.", "warning");
+      addToast("Clinical documentation note is required before resolving.", "warning");
       return;
     }
 
@@ -106,7 +105,7 @@ export const AlertsDashboard = ({ onSelectPatient, onAlertStateChanged }) => {
 
       if (res.ok) {
         addToast(
-          `Alert ${selectedAlertForAction.alert_id} ${actionType === 'resolve' ? 'resolved' : 'dismissed'} successfully.`,
+          `Clinical alert ${actionType === 'resolve' ? 'resolved' : 'dismissed'} successfully.`,
           'success'
         );
         setSelectedAlertForAction(null);
@@ -119,7 +118,7 @@ export const AlertsDashboard = ({ onSelectPatient, onAlertStateChanged }) => {
         addToast(err.detail || `Failed to ${actionType} alert.`, "error");
       }
     } catch (err) {
-      addToast("Network error submitting alert resolution.", "error");
+      addToast("Network error submitting alert documentation.", "error");
     } finally {
       setSubmittingAction(false);
     }
@@ -146,26 +145,26 @@ export const AlertsDashboard = ({ onSelectPatient, onAlertStateChanged }) => {
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-600 text-white shadow-md shadow-rose-950 animate-pulse shrink-0">
             <AlertOctagon className="w-3 h-3" />
-            CRITICAL
+            Immediate Attention
           </span>
         );
       case 'HIGH':
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-500 text-slate-950 shrink-0">
             <AlertTriangle className="w-3 h-3" />
-            HIGH RISK
+            High Priority
           </span>
         );
       case 'MODERATE':
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-yellow-950 text-yellow-300 border border-yellow-800 shrink-0">
-            MODERATE
+            Moderate Priority
           </span>
         );
       default:
         return (
           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800 shrink-0">
-            INFO
+            Information
           </span>
         );
     }
@@ -174,15 +173,15 @@ export const AlertsDashboard = ({ onSelectPatient, onAlertStateChanged }) => {
   const getClinicalRationale = (alertType) => {
     switch (alertType) {
       case 'VITALS_DETERIORATION':
-        return 'Early warning deterioration detected by continuous physiological trend analysis. Elevated risk of cardiopulmonary decompensation.';
+        return 'Early warning: Continuous vital signs trend indicates possible clinical deterioration. Prompt bedside assessment recommended.';
       case 'WAIT_THRESHOLD_BREACHED':
-        return 'Patient has exceeded safe emergency department waiting limit for assigned triage acuity level. Immediate clinician triage required.';
+        return 'Safe wait time exceeded for the patient’s current priority tier. Immediate clinical screening recommended.';
       case 'AI_RISK_ELEVATION':
-        return 'Machine learning inference model predicts >75% likelihood of critical clinical decompensation within 24 hours.';
+        return 'AI risk assessment indicates high probability of condition worsening based on vital sign changes.';
       case 'CLINICAL_DISCORDANCE':
-        return 'Intake symptoms and objective vital signs conflict. Under-triage protection escalation applied.';
+        return 'Symptoms and recorded vital signs conflict. Under-triage safety escalation applied.';
       default:
-        return 'Active clinical event requiring clinician awareness and structured review.';
+        return 'Active clinical event requiring clinician review and documented bedside follow-up.';
     }
   };
 
@@ -197,15 +196,15 @@ export const AlertsDashboard = ({ onSelectPatient, onAlertStateChanged }) => {
           </div>
           <div>
             <div className="flex items-center gap-2.5">
-              <h1 className="text-xl font-bold text-white tracking-tight">Clinical Alerts &amp; Deterioration Dashboard</h1>
+              <h1 className="text-xl font-bold text-white tracking-tight">Clinical Alerts &amp; Early Warnings</h1>
               {metrics.unacknowledged > 0 && (
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-600 text-white animate-pulse">
-                  {metrics.unacknowledged} UNACKNOWLEDGED
+                  {metrics.unacknowledged} PENDING REVIEW
                 </span>
               )}
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Early warning physiological alarms, safe wait threshold monitoring, and clinician response workflow
+              Early warning physiological alerts, safe wait time monitoring, and clinician resolution workflow
             </p>
           </div>
         </div>
@@ -216,7 +215,7 @@ export const AlertsDashboard = ({ onSelectPatient, onAlertStateChanged }) => {
           className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-colors disabled:opacity-50 cursor-pointer"
         >
           <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-          <span>Refresh Alarms</span>
+          <span>Refresh Alerts</span>
         </button>
       </div>
 
@@ -226,16 +225,16 @@ export const AlertsDashboard = ({ onSelectPatient, onAlertStateChanged }) => {
         {/* Total Alerts */}
         <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl shadow-xl flex items-center justify-between border-l-4 border-l-cyan-500">
           <div>
-            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Generated</div>
+            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Total Recorded</div>
             <div className="text-2xl font-black text-white font-mono mt-0.5">{alerts.length}</div>
           </div>
           <Bell className="w-6 h-6 text-cyan-400/80" />
         </div>
 
-        {/* Unacknowledged Alarms */}
+        {/* Pending Review */}
         <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl shadow-xl flex items-center justify-between border-l-4 border-l-rose-500">
           <div>
-            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Unacknowledged</div>
+            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Pending Review</div>
             <div className={`text-2xl font-black font-mono mt-0.5 ${metrics.unacknowledged > 0 ? 'text-rose-400 animate-pulse' : 'text-slate-200'}`}>
               {metrics.unacknowledged || 0}
             </div>
@@ -243,10 +242,10 @@ export const AlertsDashboard = ({ onSelectPatient, onAlertStateChanged }) => {
           <AlertOctagon className="w-6 h-6 text-rose-400/80" />
         </div>
 
-        {/* Critical Severity */}
+        {/* Immediate Attention Severity */}
         <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl shadow-xl flex items-center justify-between border-l-4 border-l-amber-500">
           <div>
-            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Critical Severity</div>
+            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Immediate Attention</div>
             <div className={`text-2xl font-black font-mono mt-0.5 ${metrics.critical > 0 ? 'text-amber-400' : 'text-slate-200'}`}>
               {metrics.critical || 0}
             </div>
@@ -254,10 +253,10 @@ export const AlertsDashboard = ({ onSelectPatient, onAlertStateChanged }) => {
           <AlertTriangle className="w-6 h-6 text-amber-400/80" />
         </div>
 
-        {/* Resolved Count */}
+        {/* Resolved Alerts */}
         <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl shadow-xl flex items-center justify-between border-l-4 border-l-emerald-500">
           <div>
-            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Resolved Alarms</div>
+            <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Resolved Alerts</div>
             <div className="text-2xl font-black text-emerald-400 font-mono mt-0.5">{metrics.resolved || 0}</div>
           </div>
           <CheckCircle2 className="w-6 h-6 text-emerald-400/80" />
@@ -269,17 +268,22 @@ export const AlertsDashboard = ({ onSelectPatient, onAlertStateChanged }) => {
         
         {/* Status Tabs */}
         <div className="flex flex-wrap items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
-          {['ALL', 'UNACKNOWLEDGED', 'ACKNOWLEDGED', 'RESOLVED'].map((tab) => (
+          {[
+            { id: 'ALL', label: 'All Alerts' },
+            { id: 'UNACKNOWLEDGED', label: 'Pending Review' },
+            { id: 'ACKNOWLEDGED', label: 'In Progress' },
+            { id: 'RESOLVED', label: 'Resolved' }
+          ].map((tab) => (
             <button
-              key={tab}
-              onClick={() => setStatusFilter(tab)}
+              key={tab.id}
+              onClick={() => setStatusFilter(tab.id)}
               className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                statusFilter === tab
+                statusFilter === tab.id
                   ? 'bg-amber-600 text-white shadow-sm'
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              {tab === 'ALL' ? 'All Alerts' : tab}
+              {tab.label}
             </button>
           ))}
         </div>
@@ -291,18 +295,18 @@ export const AlertsDashboard = ({ onSelectPatient, onAlertStateChanged }) => {
             onChange={(e) => setSeverityFilter(e.target.value)}
             className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-300 font-medium focus:outline-none focus:border-cyan-500 cursor-pointer"
           >
-            <option value="ALL">All Severities</option>
-            <option value="CRITICAL">Critical Severity</option>
-            <option value="HIGH">High Risk</option>
-            <option value="MODERATE">Moderate</option>
-            <option value="LOW">Low / Info</option>
+            <option value="ALL">All Alert Levels</option>
+            <option value="CRITICAL">Immediate Attention</option>
+            <option value="HIGH">High Priority</option>
+            <option value="MODERATE">Moderate Priority</option>
+            <option value="LOW">Information Only</option>
           </select>
 
           <div className="relative flex-1 sm:w-64">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2" />
             <input
               type="text"
-              placeholder="Search alert, patient name, type..."
+              placeholder="Search alert, patient name..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
@@ -324,7 +328,7 @@ export const AlertsDashboard = ({ onSelectPatient, onAlertStateChanged }) => {
             <EmptyState
               icon={CheckCircle2}
               title="No Active Alerts"
-              description="No clinical alerts or patient deterioration warnings match your active filters."
+              description="No clinical alerts or early condition warnings currently match your filter settings."
               actionText="Reset Filters"
               onAction={() => {
                 setStatusFilter('ALL');
@@ -350,21 +354,18 @@ export const AlertsDashboard = ({ onSelectPatient, onAlertStateChanged }) => {
                     : 'border-slate-800'
                 }`}
               >
-                {/* Header Row: Severity Pill, Patient Name, Timestamp, Status */}
+                {/* Header Row */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-800/80 pb-3">
                   <div className="flex items-center gap-2.5 flex-wrap">
                     {getSeverityPill(alert.severity)}
                     <span className="font-bold text-white text-sm">
-                      {alert.patient_name ? `Patient: ${alert.patient_name}` : alert.alert_type}
+                      {alert.patient_name ? `Patient: ${alert.patient_name}` : 'Clinical Alert'}
                     </span>
                     {alert.encounter_id && (
                       <span className="text-[11px] text-slate-400 font-mono">
-                        ENC: #{alert.encounter_id}
+                        Visit #{alert.encounter_id}
                       </span>
                     )}
-                    <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-950 text-cyan-300 border border-slate-800">
-                      {alert.alert_type}
-                    </span>
                   </div>
 
                   <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
@@ -378,12 +379,12 @@ export const AlertsDashboard = ({ onSelectPatient, onAlertStateChanged }) => {
                       alert.status === 'ACKNOWLEDGED' ? 'bg-amber-950 text-amber-300 border border-amber-800' :
                       'bg-emerald-950 text-emerald-300 border border-emerald-800'
                     }`}>
-                      {alert.status}
+                      {alert.status === 'UNACKNOWLEDGED' ? 'Pending Review' : alert.status === 'ACKNOWLEDGED' ? 'In Progress' : 'Resolved'}
                     </span>
                   </div>
                 </div>
 
-                {/* Body Row: 3 Clinical Sections */}
+                {/* Body: 3 Clinical Sections */}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
                   
                   {/* 1. What Happened */}
@@ -394,28 +395,28 @@ export const AlertsDashboard = ({ onSelectPatient, onAlertStateChanged }) => {
 
                   {/* 2. Why It Matters */}
                   <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800/80 space-y-1">
-                    <div className="text-[10px] uppercase font-bold text-slate-400">2. Clinical Context</div>
+                    <div className="text-[10px] uppercase font-bold text-slate-400">2. Why It Matters</div>
                     <p className="text-slate-300 leading-snug">{getClinicalRationale(alert.alert_type)}</p>
                   </div>
 
-                  {/* 3. Action / Resolution History */}
+                  {/* 3. Action / Resolution */}
                   <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800/80 space-y-1">
-                    <div className="text-[10px] uppercase font-bold text-slate-400">3. Governance &amp; Response</div>
+                    <div className="text-[10px] uppercase font-bold text-slate-400">3. Recommended Action</div>
                     {alert.status === 'RESOLVED' ? (
                       <div className="space-y-0.5 text-slate-300">
                         <div className="text-emerald-400 font-bold flex items-center gap-1">
                           <CheckCircle2 className="w-3 h-3" />
-                          Resolved by {alert.resolved_by || 'Staff'}
+                          Resolved by {alert.resolved_by || 'Clinician'}
                         </div>
                         <p className="text-slate-400 text-[11px]">{alert.resolution_notes || 'Action documented.'}</p>
                       </div>
                     ) : alert.status === 'ACKNOWLEDGED' ? (
                       <div className="text-amber-300">
-                        Acknowledged by <strong>{alert.acknowledged_by || 'Clinician'}</strong>. Pending resolution.
+                        Review in progress by <strong>{alert.acknowledged_by || 'Clinician'}</strong>. Bedside assessment active.
                       </div>
                     ) : (
                       <div className="text-rose-300 font-medium">
-                        Immediate clinician acknowledgment &amp; bedside reassessment required.
+                        Immediate bedside assessment &amp; clinician review recommended.
                       </div>
                     )}
                   </div>
@@ -424,7 +425,7 @@ export const AlertsDashboard = ({ onSelectPatient, onAlertStateChanged }) => {
                 {/* Actions Footer */}
                 <div className="flex items-center justify-between pt-1 border-t border-slate-800/60">
                   <span className="text-[11px] text-slate-500 font-mono">
-                    ID: {alert.alert_id}
+                    Alert Ref: {alert.alert_id}
                   </span>
 
                   <div className="flex items-center gap-2">
@@ -434,7 +435,7 @@ export const AlertsDashboard = ({ onSelectPatient, onAlertStateChanged }) => {
                         onClick={(e) => handleAcknowledge(e, alert.alert_id)}
                         className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-500 text-slate-950 text-xs font-bold transition-all shadow cursor-pointer"
                       >
-                        Acknowledge Alarm
+                        Acknowledge Alert
                       </button>
                     )}
 
@@ -444,7 +445,7 @@ export const AlertsDashboard = ({ onSelectPatient, onAlertStateChanged }) => {
                         onClick={(e) => handleOpenActionModal(e, alert, 'resolve')}
                         className="px-3 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-white border border-emerald-500/40 text-xs font-bold transition-all cursor-pointer"
                       >
-                        Resolve with Notes
+                        Resolve with Documentation
                       </button>
                     )}
 
@@ -458,7 +459,7 @@ export const AlertsDashboard = ({ onSelectPatient, onAlertStateChanged }) => {
                       </button>
                     )}
 
-                    {/* View Patient Chart */}
+                    {/* View Patient Workspace */}
                     {alert.encounter_id && (
                       <button
                         onClick={(e) => {
@@ -468,7 +469,7 @@ export const AlertsDashboard = ({ onSelectPatient, onAlertStateChanged }) => {
                         className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
                       >
                         <Eye className="w-3.5 h-3.5" />
-                        <span>Chart</span>
+                        <span>Patient Workspace</span>
                       </button>
                     )}
                   </div>
@@ -479,7 +480,7 @@ export const AlertsDashboard = ({ onSelectPatient, onAlertStateChanged }) => {
         )}
       </div>
 
-      {/* Resolution / Dismissal Justification Modal */}
+      {/* Resolution Documentation Modal */}
       {selectedAlertForAction && (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-lg w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
@@ -487,7 +488,7 @@ export const AlertsDashboard = ({ onSelectPatient, onAlertStateChanged }) => {
               <div className="flex items-center gap-2">
                 <ShieldCheck className="w-5 h-5 text-emerald-400" />
                 <h3 className="text-base font-bold text-white">
-                  {actionType === 'resolve' ? 'Resolve Clinical Alarm' : 'Dismiss Clinical Alarm'}
+                  {actionType === 'resolve' ? 'Document Alert Resolution' : 'Dismiss Clinical Alert'}
                 </h3>
               </div>
               <button
@@ -501,17 +502,17 @@ export const AlertsDashboard = ({ onSelectPatient, onAlertStateChanged }) => {
             <form onSubmit={handleSubmitAction} className="space-y-4">
               <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs space-y-1">
                 <div className="font-bold text-slate-200">Alert: {selectedAlertForAction.message}</div>
-                <div className="text-slate-400 font-mono">ID: {selectedAlertForAction.alert_id}</div>
+                <div className="text-slate-400 font-mono">Ref: {selectedAlertForAction.alert_id}</div>
               </div>
 
               <div className="space-y-1.5">
                 <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider">
-                  Clinical Documentation / Resolution Rationale <span className="text-rose-400">*</span>
+                  Clinical Action Taken &amp; Documentation Note <span className="text-rose-400">*</span>
                 </label>
                 <textarea
                   required
                   rows={3}
-                  placeholder="Document the bedside clinical action taken (e.g. O2 administered, re-triaged ESI 2, vital signs stabilized)..."
+                  placeholder="Describe bedside actions (e.g. Oxygen administered, physician evaluated patient, vitals stabilized)..."
                   value={actionReason}
                   onChange={(e) => setActionReason(e.target.value)}
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
@@ -531,7 +532,7 @@ export const AlertsDashboard = ({ onSelectPatient, onAlertStateChanged }) => {
                   disabled={submittingAction}
                   className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md shadow-emerald-900/30 transition-all disabled:opacity-50 cursor-pointer"
                 >
-                  {submittingAction ? 'Documenting...' : `Confirm ${actionType === 'resolve' ? 'Resolution' : 'Dismissal'}`}
+                  {submittingAction ? 'Saving...' : `Confirm ${actionType === 'resolve' ? 'Resolution' : 'Dismissal'}`}
                 </button>
               </div>
             </form>

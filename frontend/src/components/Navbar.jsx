@@ -22,6 +22,7 @@ import {
   X,
   Menu
 } from 'lucide-react';
+import { ROLE_LABELS } from '../utils/terminology';
 
 /* ─────────────────────────────────────────────
    Role → Pill Meta
@@ -32,7 +33,7 @@ const ROLE_META = {
     cls: 'bg-purple-950/80 text-purple-300 border-purple-800/60',
   },
   HOSPITAL_ADMIN: {
-    label: 'Hospital Admin',
+    label: 'Hospital Administrator',
     cls: 'bg-cyan-950/80 text-cyan-300 border-cyan-800/60',
   },
   EMERGENCY_PHYSICIAN: {
@@ -51,7 +52,7 @@ const ROLE_META = {
 
 const RolePill = ({ role }) => {
   const meta = ROLE_META[role] || {
-    label: role || 'Staff',
+    label: ROLE_LABELS[role] || role || 'Staff',
     cls: 'bg-slate-800 text-slate-300 border-slate-700',
   };
   return (
@@ -124,7 +125,7 @@ export const Navbar = ({
 
   const navItems = [
     { tab: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { tab: 'categories', icon: Layers, label: 'Triage Categories' },
+    { tab: 'categories', icon: Layers, label: 'Care Priorities' },
     { tab: 'capacity', icon: Bed, label: 'Beds & Staff' },
     {
       tab: 'alerts',
@@ -132,9 +133,9 @@ export const Navbar = ({
       label: 'Alerts',
       badge: unacknowledgedAlertCount,
     },
-    hasPermission('audit:view') && { tab: 'audit', icon: FileText, label: 'Audit' },
-    hasPermission('staff:view') && { tab: 'staff', icon: ShieldCheck, label: 'Staff' },
-    isAdmin && { tab: 'mlops', icon: Cpu, label: 'MLOps' },
+    hasPermission('audit:view') && { tab: 'audit', icon: FileText, label: 'Audit Trail' },
+    hasPermission('staff:view') && { tab: 'staff', icon: ShieldCheck, label: 'Staff & Roles' },
+    isAdmin && { tab: 'mlops', icon: Cpu, label: 'AI Operations' },
   ].filter(Boolean);
 
   return (
@@ -199,13 +200,13 @@ export const Navbar = ({
             </button>
           )}
 
-          {/* Hospital Name display */}
+          {/* Hospital Facility Name display */}
           <div className="hidden sm:flex flex-col text-right leading-tight max-w-[200px]">
             <span className="text-xs font-bold text-slate-200 truncate">
               {hospital?.name || currentStaff?.hospital_id || 'Demo General Hospital'}
             </span>
             <span className="text-[10px] text-slate-500 font-mono">
-              ID: {currentStaff?.hospital_id || 'DEMO001'}
+              Facility: {currentStaff?.hospital_id || 'DEMO001'}
             </span>
           </div>
 
@@ -231,7 +232,7 @@ export const Navbar = ({
                   </div>
                   <div className="flex-1 min-w-0">
                     <h4 className="text-sm font-bold text-white truncate">{currentStaff.name}</h4>
-                    <p className="text-[11px] text-cyan-400 font-mono">{currentStaff.staff_id}</p>
+                    <p className="text-[11px] text-cyan-400 font-mono">Staff ID: {currentStaff.staff_id}</p>
                     <div className="mt-1">
                       <RolePill role={currentStaff.role} />
                     </div>
@@ -243,7 +244,7 @@ export const Navbar = ({
                   <div className="flex items-center gap-2 text-slate-300">
                     <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                     <div className="truncate">
-                      <span className="text-[10px] text-slate-500 block uppercase font-bold">Facility:</span>
+                      <span className="text-[10px] text-slate-500 block uppercase font-bold">Hospital Facility:</span>
                       <span className="font-semibold text-slate-200">{hospital?.name || currentStaff.hospital_id}</span>
                     </div>
                   </div>
@@ -252,7 +253,7 @@ export const Navbar = ({
                     <div className="flex items-center gap-2 text-slate-300">
                       <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                       <div className="truncate">
-                        <span className="text-[10px] text-slate-500 block uppercase font-bold">Email:</span>
+                        <span className="text-[10px] text-slate-500 block uppercase font-bold">Email Address:</span>
                         <span className="font-mono text-slate-300">{currentStaff.email}</span>
                       </div>
                     </div>

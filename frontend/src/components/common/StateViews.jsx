@@ -2,8 +2,14 @@ import React from 'react';
 import { 
   AlertTriangle, RefreshCw, FolderSearch, ShieldAlert, 
   AlertOctagon, CheckCircle2, Activity, Sparkles, ShieldCheck, 
-  Info, AlertCircle
+  Info, AlertCircle, Clock
 } from 'lucide-react';
+import { 
+  getPriorityMeta, 
+  getPatientStatusMeta, 
+  getConfidenceMeta,
+  getVisitStatusMeta 
+} from '../../utils/terminology';
 
 /**
  * Reusable Loading Skeleton for Cards & Tables
@@ -38,11 +44,11 @@ export const LoadingSkeleton = ({ type = "table", rows = 5 }) => {
 };
 
 /**
- * Clean Empty State View
+ * Clean Empty State View with Natural Language
  */
 export const EmptyState = ({ 
   icon: Icon = FolderSearch, 
-  title = "No records found", 
+  title = "No Records Found", 
   description = "There are currently no items matching your criteria.",
   actionText,
   onAction
@@ -72,8 +78,8 @@ export const EmptyState = ({
  * Meaningful Recoverable Error State View
  */
 export const ErrorState = ({ 
-  title = "Unable to load data", 
-  message = "A network or authorization error occurred while fetching information from the clinical server.", 
+  title = "Unable to Load Information", 
+  message = "A network or authorization error occurred while retrieving clinical information. Please try again.", 
   onRetry,
   retryText = "Try Again"
 }) => {
@@ -100,98 +106,97 @@ export const ErrorState = ({
 };
 
 /**
- * Consistent Clinical Badges
+ * Care Priority Badge with Primary/Secondary Visual Hierarchy
  */
-export const AcuityBadge = ({ level, category }) => {
-  switch (Number(level)) {
-    case 1:
-      return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-black bg-rose-500/20 text-rose-300 border border-rose-500/40 shrink-0">
-          <AlertOctagon className="w-3.5 h-3.5 text-rose-400" />
-          ESI 1 • Resuscitation
-        </span>
-      );
-    case 2:
-      return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 shrink-0">
-          <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
-          ESI 2 • Emergent
-        </span>
-      );
-    case 3:
-      return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-yellow-500/20 text-yellow-300 border border-yellow-500/40 shrink-0">
-          ESI 3 • Urgent
-        </span>
-      );
-    case 4:
-      return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shrink-0">
-          ESI 4 • Less Urgent
-        </span>
-      );
-    default:
-      return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-500/20 text-blue-300 border border-blue-500/40 shrink-0">
-          ESI 5 • Non-Urgent
-        </span>
-      );
+export const AcuityBadge = ({ level, showSecondary = true, compact = false }) => {
+  const meta = getPriorityMeta(level);
+  
+  if (compact) {
+    return (
+      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[11px] font-bold border shrink-0 ${meta.bgLight}`}>
+        {level === 1 && <AlertOctagon className="w-3 h-3 text-rose-400" />}
+        {level === 2 && <AlertTriangle className="w-3 h-3 text-amber-400" />}
+        {level === 3 && <AlertCircle className="w-3 h-3 text-yellow-400" />}
+        {level === 4 && <CheckCircle2 className="w-3 h-3 text-emerald-400" />}
+        {level === 5 && <CheckCircle2 className="w-3 h-3 text-blue-400" />}
+        <span>{meta.primary}</span>
+      </span>
+    );
   }
+
+  return (
+    <div className="inline-flex flex-col gap-0.5 shrink-0">
+      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold border ${meta.bgLight}`}>
+        {level === 1 && <AlertOctagon className="w-3.5 h-3.5 text-rose-400" />}
+        {level === 2 && <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />}
+        {level === 3 && <AlertCircle className="w-3.5 h-3.5 text-yellow-400" />}
+        {level === 4 && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />}
+        {level === 5 && <CheckCircle2 className="w-3.5 h-3.5 text-blue-400" />}
+        <span>{meta.primary}</span>
+      </span>
+      {showSecondary && (
+        <span className="text-[10px] text-slate-500 font-mono pl-1">
+          {meta.secondary}
+        </span>
+      )}
+    </div>
+  );
 };
 
+export const PriorityBadge = AcuityBadge;
+
+/**
+ * Patient Care Status Badge
+ */
 export const SafetyStatusBadge = ({ status }) => {
-  switch (status) {
-    case 'ESCALATE':
-      return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-rose-600 text-white shadow-md shadow-rose-950 animate-pulse shrink-0">
-          <ShieldAlert className="w-3 h-3" />
-          ESCALATE
-        </span>
-      );
-    case 'REASSESS':
-      return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-500 text-slate-950 shadow shrink-0">
-          <AlertTriangle className="w-3 h-3" />
-          REASSESS
-        </span>
-      );
-    case 'MONITOR':
-      return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-700 shrink-0">
-          <Activity className="w-3 h-3" />
-          MONITOR
-        </span>
-      );
-    default:
-      return (
-        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-300 border border-emerald-800 shrink-0">
-          <ShieldCheck className="w-3 h-3" />
-          STABLE
-        </span>
-      );
-  }
+  const meta = getPatientStatusMeta(status);
+  return (
+    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${meta.badgeCls}`}>
+      {status === 'ESCALATE' && <ShieldAlert className="w-3 h-3" />}
+      {status === 'REASSESS' && <AlertTriangle className="w-3 h-3" />}
+      {status === 'MONITOR' && <Activity className="w-3 h-3" />}
+      {status === 'STABLE' && <ShieldCheck className="w-3 h-3" />}
+      <span>{meta.label}</span>
+    </span>
+  );
 };
 
+/**
+ * AI Confidence Tier Badge
+ */
 export const ConfidenceBadge = ({ confidence }) => {
-  switch (confidence) {
-    case 'HIGH':
-      return <span className="text-[9px] font-bold text-emerald-400 bg-emerald-950/70 px-2 py-0.5 rounded border border-emerald-800/60 shrink-0">Confidence: HIGH</span>;
-    case 'MODERATE':
-      return <span className="text-[9px] font-bold text-amber-300 bg-amber-950/70 px-2 py-0.5 rounded border border-amber-800/60 shrink-0">Confidence: MOD</span>;
-    default:
-      return <span className="text-[9px] font-black text-rose-300 bg-rose-950 px-2 py-0.5 rounded border border-rose-600 animate-pulse shrink-0">Confidence: LOW ⚠️</span>;
-  }
+  const meta = getConfidenceMeta(confidence);
+  return (
+    <span className={`text-[9px] font-bold px-2 py-0.5 rounded border shrink-0 ${meta.badgeCls}`} title={meta.helpText}>
+      {meta.label}
+    </span>
+  );
 };
 
+/**
+ * Patient Age Group Badge
+ */
 export const AgeGroupBadge = ({ ageGroup, age }) => {
-  if (ageGroup === 'PEDIATRIC') {
-    return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-pink-950/80 text-pink-300 border border-pink-800/60 shrink-0">Pediatric ({age}y)</span>;
+  if (ageGroup === 'PEDIATRIC' || (age && age < 18)) {
+    return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-pink-950/80 text-pink-300 border border-pink-800/60 shrink-0">Pediatric ({age || 'Child'}y)</span>;
   }
-  if (ageGroup === 'GERIATRIC') {
-    return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-950/80 text-purple-300 border border-purple-800/60 shrink-0">Geriatric ({age}y)</span>;
+  if (ageGroup === 'GERIATRIC' || (age && age >= 65)) {
+    return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-950/80 text-purple-300 border border-purple-800/60 shrink-0">Geriatric ({age || 'Senior'}y)</span>;
   }
-  if (ageGroup === 'UNKNOWN') {
+  if (ageGroup === 'UNKNOWN' && !age) {
     return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700 shrink-0">Age Unknown</span>;
   }
   return <span className="text-[10px] text-slate-400 font-mono shrink-0">{age ? `${age}y Adult` : 'Adult'}</span>;
+};
+
+/**
+ * Visit Status Badge
+ */
+export const VisitStatusBadge = ({ status }) => {
+  const meta = getVisitStatusMeta(status);
+  return (
+    <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${meta.cls}`}>
+      {meta.label}
+    </span>
+  );
 };

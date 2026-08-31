@@ -69,7 +69,7 @@ export const LoginModal = ({ isOpen, onClose }) => {
         {/* Selected Credentials Detail */}
         <div className="p-3.5 rounded-xl bg-slate-950 border border-slate-800 space-y-2 text-xs">
           <div className="flex items-center justify-between text-slate-300">
-            <span>Hospital Tenant:</span>
+            <span>Hospital Facility:</span>
             <strong className="font-mono text-cyan-400">{selectedHospital}</strong>
           </div>
           <div className="flex items-center justify-between text-slate-300">
@@ -77,8 +77,8 @@ export const LoginModal = ({ isOpen, onClose }) => {
             <strong className="font-mono text-white">{selectedStaffId}</strong>
           </div>
           <div className="flex items-center justify-between text-slate-300">
-            <span>Authentication Type:</span>
-            <span className="text-emerald-400 font-semibold">PBKDF2-HMAC Tokenized</span>
+            <span>Security Status:</span>
+            <span className="text-emerald-400 font-semibold">Session Tokenized</span>
           </div>
         </div>
 
