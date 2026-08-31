@@ -1,59 +1,146 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
-import { UserPlus, Activity, Heart, X, CheckCircle2, AlertTriangle, Clock, Stethoscope } from 'lucide-react';
+import { 
+  UserPlus, Activity, Heart, X, CheckCircle2, AlertTriangle, 
+  Clock, Stethoscope, Sparkles, Shield, ArrowRight, UserCheck, Eye
+} from 'lucide-react';
+import { PRIORITY_LEVELS, getPriorityMeta, getConfidenceMeta, getRiskCategoryMeta } from '../utils/terminology';
 
-export const PatientRegistrationModal = ({ isOpen, onClose, onPatientRegistered }) => {
-  const { authHeaders, addToast, currentStaff } = useAuth();
+const INITIAL_FORM_STATE = {
+  first_name: '',
+  last_name: '',
+  age: '',
+  gender: 'Female',
+  phone: '',
+  allergies: '',
+  medical_history: '',
+  chief_complaint: '',
+  arrival_mode: 'Walk-in',
+  bed_number: '',
+  pain_score: '',
+  hr: '',
+  sbp: '',
+  dbp: '',
+  rr: '',
+  spo2: '',
+  temp: ''
+};
+
+export const PatientRegistrationModal = ({ isOpen, onClose, onPatientRegistered, onViewPatient }) => {
+  const { authHeaders, addToast } = useAuth();
+  
+  const [formData, setFormData] = useState(INITIAL_FORM_STATE);
+  const [validationErrors, setValidationErrors] = useState({});
   const [submitting, setSubmitting] = useState(false);
+  const [assessmentResult, setAssessmentResult] = useState(null);
 
-  const [formData, setFormData] = useState({
-    first_name: '',
-    last_name: '',
-    mrn: `MRN-${Math.floor(1000 + Math.random() * 9000)}`,
-    age: 45,
-    gender: 'Female',
-    phone: '555-0144',
-    allergies: 'None Known',
-    medical_history: 'Hypertension',
-    chief_complaint: 'Acute worsening shortness of breath and chest tightness',
-    arrival_mode: 'Ambulance (EMS)',
-    bed_number: 'BED-01',
-    triage_level: 2,
-    acuity_category: 'Emergency — Immediate Assessment',
-    pain_score: 6,
-    // Baseline Vitals
-    hr: 110,
-    sbp: 140,
-    dbp: 90,
-    rr: 24,
-    spo2: 92,
-    temp: 37.2
-  });
+  // Clean reset every time the modal is opened
+  useEffect(() => {
+    if (isOpen) {
+      setFormData(INITIAL_FORM_STATE);
+      setValidationErrors({});
+      setSubmitting(false);
+      setAssessmentResult(null);
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
+  // ─────────────────────────────────────────────
+  // Input Validation
+  // ─────────────────────────────────────────────
+
+  const validate = () => {
+    const errors = {};
+
+    if (!formData.first_name.trim()) {
+      errors.first_name = "First name is required.";
+    }
+
+    if (!formData.last_name.trim()) {
+      errors.last_name = "Last name is required.";
+    }
+
+    // Age validation
+    if (!formData.age.trim()) {
+      errors.age = "Age in years is required.";
+    } else {
+      const ageNum = Number(formData.age);
+      if (isNaN(ageNum) || !Number.isInteger(ageNum) || ageNum < 0 || ageNum > 125) {
+        errors.age = "Please enter a valid age in years (0 to 125).";
+      }
+    }
+
+    if (!formData.chief_complaint.trim()) {
+      errors.chief_complaint = "Chief complaint and presenting symptoms are required.";
+    }
+
+    // Vitals validation
+    if (!formData.hr) {
+      errors.hr = "Heart rate is required.";
+    } else {
+      const hrNum = Number(formData.hr);
+      if (isNaN(hrNum) || hrNum < 20 || hrNum > 250) {
+        errors.hr = "Please enter a valid heart rate (20-250 bpm).";
+      }
+    }
+
+    if (!formData.sbp) {
+      errors.sbp = "Systolic blood pressure is required.";
+    } else {
+      const sbpNum = Number(formData.sbp);
+      if (isNaN(sbpNum) || sbpNum < 40 || sbpNum > 300) {
+        errors.sbp = "Please enter a valid systolic BP (40-300 mmHg).";
+      }
+    }
+
+    if (!formData.rr) {
+      errors.rr = "Respiratory rate is required.";
+    } else {
+      const rrNum = Number(formData.rr);
+      if (isNaN(rrNum) || rrNum < 4 || rrNum > 80) {
+        errors.rr = "Please enter a valid respiratory rate (4-80 /min).";
+      }
+    }
+
+    if (!formData.spo2) {
+      errors.spo2 = "Oxygen saturation (SpO₂) is required.";
+    } else {
+      const spo2Num = Number(formData.spo2);
+      if (isNaN(spo2Num) || spo2Num < 40 || spo2Num > 100) {
+        errors.spo2 = "Please enter a valid SpO₂ percentage (40-100%).";
+      }
+    }
+
+    setValidationErrors(errors);
+    return Object.keys(errors).length === 0;
+  };
+
+  // ─────────────────────────────────────────────
+  // Submission & ML Inference Flow
+  // ─────────────────────────────────────────────
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!formData.first_name.trim() || !formData.last_name.trim() || !formData.chief_complaint.trim()) {
-      addToast("First name, last name, and chief complaint are required.", "warning");
+    if (!validate()) {
+      addToast("Please fill in all required intake fields with valid clinical values.", "warning");
       return;
     }
 
     setSubmitting(true);
     try {
-      // Step 1: Create Patient
+      // Step 1: Create Patient Demographics (MRN generated server-side)
       const ptRes = await fetch('/api/patients', {
         method: 'POST',
         headers: { ...authHeaders, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           first_name: formData.first_name.trim(),
           last_name: formData.last_name.trim(),
-          mrn: formData.mrn.trim(),
-          age: parseFloat(formData.age) || 0,
+          age: parseInt(formData.age, 10),
           gender: formData.gender,
-          phone: formData.phone.trim(),
-          allergies: formData.allergies.trim(),
-          medical_history: formData.medical_history.trim()
+          phone: formData.phone.trim() || undefined,
+          allergies: formData.allergies.trim() || undefined,
+          medical_history: formData.medical_history.trim() || undefined
         })
       });
 
@@ -63,9 +150,10 @@ export const PatientRegistrationModal = ({ isOpen, onClose, onPatientRegistered 
       }
 
       const ptData = await ptRes.json();
-      const patientId = ptData.patient.patient_id;
+      const patient = ptData.patient;
+      const patientId = patient.patient_id;
 
-      // Step 2: Create ED Visit
+      // Step 2: Create Patient Visit (ED Encounter)
       const encRes = await fetch('/api/encounters', {
         method: 'POST',
         headers: { ...authHeaders, 'Content-Type': 'application/json' },
@@ -79,57 +167,95 @@ export const PatientRegistrationModal = ({ isOpen, onClose, onPatientRegistered 
 
       if (!encRes.ok) {
         const err = await encRes.json();
-        throw new Error(err.detail || "Failed to initiate patient visit.");
+        throw new Error(err.detail || "Failed to create patient visit.");
       }
 
       const encData = await encRes.json();
-      const encounterId = encData.encounter.encounter_id;
+      const encounter = encData.encounter;
+      const encounterId = encounter.encounter_id;
 
-      // Step 3: Record Initial Triage
-      await fetch(`/api/encounters/${encounterId}/triage`, {
+      // Step 3: Record Initial Baseline Vital Signs
+      const vitalsRes = await fetch(`/api/encounters/${encounterId}/vitals`, {
         method: 'POST',
         headers: { ...authHeaders, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          triage_level: parseInt(formData.triage_level) || 3,
-          acuity_category: formData.acuity_category,
-          chief_complaint: formData.chief_complaint.trim(),
-          pain_score: parseInt(formData.pain_score) || 0,
-          mobility: formData.arrival_mode.includes('Ambulance') ? 'Stretcher' : 'Ambulatory'
-        })
-      });
-
-      // Step 4: Record Initial Vital Signs
-      await fetch(`/api/encounters/${encounterId}/vitals`, {
-        method: 'POST',
-        headers: { ...authHeaders, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          hr: parseFloat(formData.hr) || 80,
-          sbp: parseFloat(formData.sbp) || 120,
-          dbp: parseFloat(formData.dbp) || 80,
-          rr: parseFloat(formData.rr) || 16,
-          spo2: parseFloat(formData.spo2) || 98,
-          temp: parseFloat(formData.temp) || 37.0,
+          hr: parseFloat(formData.hr),
+          sbp: parseFloat(formData.sbp),
+          dbp: formData.dbp ? parseFloat(formData.dbp) : undefined,
+          rr: parseFloat(formData.rr),
+          spo2: parseFloat(formData.spo2),
+          temp: formData.temp ? parseFloat(formData.temp) : 37.0,
           gcs: 15,
-          pain_score: parseInt(formData.pain_score) || 0,
-          notes: 'Initial intake baseline vitals recorded.'
+          pain_score: formData.pain_score ? parseInt(formData.pain_score, 10) : 0,
+          notes: 'Initial intake baseline vital signs.'
         })
       });
 
-      // Step 5: Automatically Trigger AI Risk Assessment
-      await fetch(`/api/encounters/${encounterId}/ai-risk`, {
+      if (!vitalsRes.ok) {
+        const err = await vitalsRes.json();
+        throw new Error(err.detail || "Failed to record baseline vital signs.");
+      }
+
+      // Step 4: Trigger Supervised ML Clinical Risk & Care Priority Assessment
+      const aiRes = await fetch(`/api/encounters/${encounterId}/ai-assessment`, {
         method: 'POST',
         headers: authHeaders
       });
 
-      addToast(`Patient ${formData.first_name} ${formData.last_name} registered and evaluated.`, "success");
-      onClose();
-      if (onPatientRegistered) onPatientRegistered(encounterId);
+      let aiAssessment = null;
+      let aiExplanation = null;
+      let predictedLevel = 3;
+
+      if (aiRes.ok) {
+        const aiData = await aiRes.json();
+        aiAssessment = aiData.assessment;
+        aiExplanation = aiData.explanation;
+        predictedLevel = aiAssessment.predicted_triage_level || 3;
+      }
+
+      const priorityMeta = getPriorityMeta(predictedLevel);
+
+      // Step 5: Record Initial Triage with the ML-Recommended Priority
+      await fetch(`/api/encounters/${encounterId}/triage`, {
+        method: 'POST',
+        headers: { ...authHeaders, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          triage_level: predictedLevel,
+          acuity_category: priorityMeta.primary,
+          chief_complaint: formData.chief_complaint.trim(),
+          pain_score: formData.pain_score ? parseInt(formData.pain_score, 10) : 0,
+          mobility: formData.arrival_mode.includes('Ambulance') ? 'Stretcher' : 'Ambulatory',
+          notes: 'AI-supported initial triage assessment based on presenting symptoms and baseline vitals.'
+        })
+      });
+
+      addToast(`Patient ${patient.first_name} ${patient.last_name} registered. AI recommended care priority: ${priorityMeta.primary}.`, "success");
+      
+      // Transition modal to Success & Assessment View
+      setAssessmentResult({
+        patient,
+        encounter,
+        aiAssessment,
+        aiExplanation,
+        predictedLevel,
+        priorityMeta
+      });
+
+      if (onPatientRegistered) {
+        onPatientRegistered(encounterId);
+      }
     } catch (err) {
       console.error('Registration error:', err);
       addToast(err.message || "Failed to complete patient intake.", "error");
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const resetFormForNextPatient = () => {
+    setFormData(INITIAL_FORM_STATE);
+    setValidationErrors({});
+    setAssessmentResult(null);
   };
 
   return (
@@ -143,8 +269,14 @@ export const PatientRegistrationModal = ({ isOpen, onClose, onPatientRegistered 
               <UserPlus className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-white tracking-tight">Register Patient &amp; Intake Assessment</h3>
-              <p className="text-[11px] text-slate-400">Record patient demographics, intake symptoms, and baseline vital signs</p>
+              <h3 className="text-base font-bold text-white tracking-tight">
+                {assessmentResult ? 'AI-Supported Triage Assessment' : 'Register Patient & Clinical Intake'}
+              </h3>
+              <p className="text-[11px] text-slate-400">
+                {assessmentResult 
+                  ? 'ML model evaluated clinical presentation, vitals, and determined care priority'
+                  : 'Record patient demographics and baseline vitals for ML care priority evaluation'}
+              </p>
             </div>
           </div>
           <button
@@ -155,277 +287,458 @@ export const PatientRegistrationModal = ({ isOpen, onClose, onPatientRegistered 
           </button>
         </div>
 
-        {/* Scrollable Form Body */}
-        <form onSubmit={handleSubmit} className="overflow-y-auto p-6 space-y-5 text-xs">
-          
-          {/* SECTION 1: Patient Demographics */}
-          <div className="bg-slate-950/80 p-4 rounded-2xl border border-slate-800 space-y-3">
-            <span className="text-[10px] uppercase font-bold text-cyan-400 tracking-wider block">
-              1. Patient Demographics &amp; Identification
-            </span>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="space-y-1">
-                <label className="block text-slate-400 font-bold">First Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. John"
-                  value={formData.first_name}
-                  onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-slate-400 font-bold">Last Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Smith"
-                  value={formData.last_name}
-                  onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-slate-400 font-bold">Age (Years) *</label>
-                <input
-                  type="number"
-                  required
-                  value={formData.age}
-                  onChange={(e) => setFormData({ ...formData, age: Number(e.target.value) })}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-slate-400 font-bold">Biological Sex *</label>
-                <select
-                  value={formData.gender}
-                  onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500"
-                >
-                  <option value="Female">Female</option>
-                  <option value="Male">Male</option>
-                  <option value="Other">Other / Non-Binary</option>
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-slate-400 font-bold">Medical Record Number (MRN)</label>
-                <input
-                  type="text"
-                  value={formData.mrn}
-                  onChange={(e) => setFormData({ ...formData, mrn: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 font-mono focus:outline-none focus:border-cyan-500"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-slate-400 font-bold">Contact Phone</label>
-                <input
-                  type="text"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 font-mono focus:outline-none focus:border-cyan-500"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* SECTION 2: Intake Assessment */}
-          <div className="bg-slate-950/80 p-4 rounded-2xl border border-slate-800 space-y-3">
-            <span className="text-[10px] uppercase font-bold text-indigo-400 tracking-wider block">
-              2. Intake Assessment &amp; Reported Symptoms
-            </span>
-            <div className="space-y-3">
-              <div className="space-y-1">
-                <label className="block text-slate-400 font-bold">Chief Complaint &amp; Presenting Symptoms *</label>
-                <textarea
-                  required
-                  rows={2}
-                  placeholder="Describe reported symptoms (e.g. Acute severe chest tightness radiating to left arm)..."
-                  value={formData.chief_complaint}
-                  onChange={(e) => setFormData({ ...formData, chief_complaint: e.target.value })}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
-                />
+        {/* ============================================================ */}
+        {/* VIEW 1: REGISTRATION & INTAKE FORM (COMPLETELY BLANK BY DEFAULT) */}
+        {/* ============================================================ */}
+        {!assessmentResult ? (
+          <form onSubmit={handleSubmit} className="overflow-y-auto p-6 space-y-5 text-xs">
+            
+            {/* SECTION 1: Patient Demographics */}
+            <div className="bg-slate-950/80 p-4 rounded-2xl border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase font-bold text-cyan-400 tracking-wider">
+                  1. Patient Demographics &amp; Identification
+                </span>
+                <span className="text-[10px] text-slate-500 font-mono">
+                  MRN: Assigned automatically by system
+                </span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                
+                {/* First Name */}
                 <div className="space-y-1">
-                  <label className="block text-slate-400 font-bold">Arrival Mode</label>
+                  <label className="block text-slate-400 font-bold">First Name *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. John"
+                    value={formData.first_name}
+                    onChange={(e) => setFormData({ ...formData, first_name: e.target.value })}
+                    className={`w-full bg-slate-900 border ${validationErrors.first_name ? 'border-rose-500' : 'border-slate-800'} rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500`}
+                  />
+                  {validationErrors.first_name && (
+                    <span className="text-[10px] text-rose-400 font-semibold">{validationErrors.first_name}</span>
+                  )}
+                </div>
+
+                {/* Last Name */}
+                <div className="space-y-1">
+                  <label className="block text-slate-400 font-bold">Last Name *</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Smith"
+                    value={formData.last_name}
+                    onChange={(e) => setFormData({ ...formData, last_name: e.target.value })}
+                    className={`w-full bg-slate-900 border ${validationErrors.last_name ? 'border-rose-500' : 'border-slate-800'} rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500`}
+                  />
+                  {validationErrors.last_name && (
+                    <span className="text-[10px] text-rose-400 font-semibold">{validationErrors.last_name}</span>
+                  )}
+                </div>
+
+                {/* Age (Fixed: No spinners, no leading 0, whole years only) */}
+                <div className="space-y-1">
+                  <label className="block text-slate-400 font-bold">Age (Years) *</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    required
+                    placeholder="e.g. 54"
+                    value={formData.age}
+                    onChange={(e) => {
+                      const cleanVal = e.target.value.replace(/\D/g, ''); // Disallow letters, decimals, negative signs
+                      setFormData({ ...formData, age: cleanVal });
+                    }}
+                    className={`w-full bg-slate-900 border ${validationErrors.age ? 'border-rose-500' : 'border-slate-800'} rounded-xl p-2 text-slate-200 font-mono focus:outline-none focus:border-cyan-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none`}
+                  />
+                  {validationErrors.age && (
+                    <span className="text-[10px] text-rose-400 font-semibold">{validationErrors.age}</span>
+                  )}
+                </div>
+
+                {/* Biological Sex */}
+                <div className="space-y-1">
+                  <label className="block text-slate-400 font-bold">Biological Sex *</label>
                   <select
-                    value={formData.arrival_mode}
-                    onChange={(e) => setFormData({ ...formData, arrival_mode: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500"
+                    value={formData.gender}
+                    onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500 cursor-pointer"
                   >
-                    <option value="Walk-in">Walk-in</option>
-                    <option value="Ambulance (EMS)">Ambulance (EMS)</option>
-                    <option value="Hospital Transfer">Hospital Transfer</option>
-                    <option value="Wheelchair Intake">Wheelchair Intake</option>
+                    <option value="Female">Female</option>
+                    <option value="Male">Male</option>
+                    <option value="Other">Other / Non-Binary</option>
                   </select>
                 </div>
 
-                <div className="space-y-1">
-                  <label className="block text-slate-400 font-bold">Assigned Care Bay / Bed</label>
+                {/* Contact Phone (Starts blank) */}
+                <div className="space-y-1 sm:col-span-2">
+                  <label className="block text-slate-400 font-bold">Contact Phone (Optional)</label>
                   <input
-                    type="text"
-                    placeholder="e.g. BED-02 / RESUS-01"
-                    value={formData.bed_number}
-                    onChange={(e) => setFormData({ ...formData, bed_number: e.target.value })}
+                    type="tel"
+                    placeholder="e.g. (555) 000-0000"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 font-mono focus:outline-none focus:border-cyan-500"
                   />
                 </div>
 
+              </div>
+            </div>
+
+            {/* SECTION 2: Intake Assessment & Symptoms */}
+            <div className="bg-slate-950/80 p-4 rounded-2xl border border-slate-800 space-y-3">
+              <span className="text-[10px] uppercase font-bold text-indigo-400 tracking-wider block">
+                2. Intake Assessment &amp; Reported Symptoms
+              </span>
+              
+              <div className="space-y-3">
+                {/* Chief Complaint */}
                 <div className="space-y-1">
-                  <label className="block text-slate-400 font-bold">Care Priority (ESI)</label>
-                  <select
-                    value={formData.triage_level}
+                  <label className="block text-slate-400 font-bold">Chief Complaint &amp; Presenting Symptoms *</label>
+                  <textarea
+                    required
+                    rows={2}
+                    placeholder="Describe symptoms (e.g. Sudden severe chest tightness radiating to left arm and shortness of breath)..."
+                    value={formData.chief_complaint}
+                    onChange={(e) => setFormData({ ...formData, chief_complaint: e.target.value })}
+                    className={`w-full bg-slate-900 border ${validationErrors.chief_complaint ? 'border-rose-500' : 'border-slate-800'} rounded-xl p-2 text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500`}
+                  />
+                  {validationErrors.chief_complaint && (
+                    <span className="text-[10px] text-rose-400 font-semibold">{validationErrors.chief_complaint}</span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="block text-slate-400 font-bold">Arrival Mode</label>
+                    <select
+                      value={formData.arrival_mode}
+                      onChange={(e) => setFormData({ ...formData, arrival_mode: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500 cursor-pointer"
+                    >
+                      <option value="Walk-in">Walk-in</option>
+                      <option value="Ambulance (EMS)">Ambulance (EMS)</option>
+                      <option value="Hospital Transfer">Hospital Transfer</option>
+                      <option value="Wheelchair Intake">Wheelchair Intake</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-slate-400 font-bold">Initial Assigned Bay (Optional)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. BED-01 or Waiting Area"
+                      value={formData.bed_number}
+                      onChange={(e) => setFormData({ ...formData, bed_number: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 font-mono focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="block text-slate-400 font-bold">Known Medical History (Optional)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Hypertension, COPD, Type 2 Diabetes"
+                      value={formData.medical_history}
+                      onChange={(e) => setFormData({ ...formData, medical_history: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-slate-400 font-bold">Known Allergies (Optional)</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Penicillin, NSAIDs, None Known"
+                      value={formData.allergies}
+                      onChange={(e) => setFormData({ ...formData, allergies: e.target.value })}
+                      className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* SECTION 3: Baseline Intake Vital Signs */}
+            <div className="bg-slate-950/80 p-4 rounded-2xl border border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider">
+                  3. Baseline Intake Vital Signs
+                </span>
+                <span className="text-[10px] text-slate-500">
+                  Used by ML model for care priority calculation
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 font-mono">
+                
+                {/* Heart Rate */}
+                <div className="space-y-1">
+                  <label className="block text-slate-400 text-[11px] font-sans font-bold">Heart Rate (bpm) *</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    required
+                    placeholder="e.g. 84"
+                    value={formData.hr}
+                    onChange={(e) => setFormData({ ...formData, hr: e.target.value.replace(/\D/g, '') })}
+                    className={`w-full bg-slate-900 border ${validationErrors.hr ? 'border-rose-500' : 'border-slate-800'} rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500`}
+                  />
+                  {validationErrors.hr && <span className="text-[9px] text-rose-400 font-sans">{validationErrors.hr}</span>}
+                </div>
+
+                {/* Systolic BP */}
+                <div className="space-y-1">
+                  <label className="block text-slate-400 text-[11px] font-sans font-bold">Systolic BP (mmHg) *</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    required
+                    placeholder="e.g. 120"
+                    value={formData.sbp}
+                    onChange={(e) => setFormData({ ...formData, sbp: e.target.value.replace(/\D/g, '') })}
+                    className={`w-full bg-slate-900 border ${validationErrors.sbp ? 'border-rose-500' : 'border-slate-800'} rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500`}
+                  />
+                  {validationErrors.sbp && <span className="text-[9px] text-rose-400 font-sans">{validationErrors.sbp}</span>}
+                </div>
+
+                {/* Diastolic BP */}
+                <div className="space-y-1">
+                  <label className="block text-slate-400 text-[11px] font-sans font-bold">Diastolic BP (mmHg)</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="e.g. 80"
+                    value={formData.dbp}
+                    onChange={(e) => setFormData({ ...formData, dbp: e.target.value.replace(/\D/g, '') })}
+                    className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+
+                {/* SpO2 */}
+                <div className="space-y-1">
+                  <label className="block text-slate-400 text-[11px] font-sans font-bold">Oxygen SpO₂ (%) *</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    required
+                    placeholder="e.g. 98"
+                    value={formData.spo2}
+                    onChange={(e) => setFormData({ ...formData, spo2: e.target.value.replace(/\D/g, '') })}
+                    className={`w-full bg-slate-900 border ${validationErrors.spo2 ? 'border-rose-500' : 'border-slate-800'} rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500`}
+                  />
+                  {validationErrors.spo2 && <span className="text-[9px] text-rose-400 font-sans">{validationErrors.spo2}</span>}
+                </div>
+
+                {/* Resp Rate */}
+                <div className="space-y-1">
+                  <label className="block text-slate-400 text-[11px] font-sans font-bold">Resp Rate (/min) *</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    required
+                    placeholder="e.g. 16"
+                    value={formData.rr}
+                    onChange={(e) => setFormData({ ...formData, rr: e.target.value.replace(/\D/g, '') })}
+                    className={`w-full bg-slate-900 border ${validationErrors.rr ? 'border-rose-500' : 'border-slate-800'} rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500`}
+                  />
+                  {validationErrors.rr && <span className="text-[9px] text-rose-400 font-sans">{validationErrors.rr}</span>}
+                </div>
+
+                {/* Pain Level */}
+                <div className="space-y-1">
+                  <label className="block text-slate-400 text-[11px] font-sans font-bold">Pain Level (0-10)</label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    placeholder="e.g. 4"
+                    value={formData.pain_score}
                     onChange={(e) => {
-                      const lvl = Number(e.target.value);
-                      const categories = {
-                        1: 'Critical — Immediate Care',
-                        2: 'Emergency — Immediate Assessment',
-                        3: 'Urgent — Prompt Assessment',
-                        4: 'Less Urgent',
-                        5: 'Non-Urgent'
-                      };
-                      setFormData({ 
-                        ...formData, 
-                        triage_level: lvl,
-                        acuity_category: categories[lvl]
-                      });
+                      const val = e.target.value.replace(/\D/g, '');
+                      if (val === '' || (Number(val) >= 0 && Number(val) <= 10)) {
+                        setFormData({ ...formData, pain_score: val });
+                      }
                     }}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500 font-bold"
-                  >
-                    <option value={1}>Level 1 — Critical (Immediate Care)</option>
-                    <option value={2}>Level 2 — Emergency (Immediate Assessment)</option>
-                    <option value={3}>Level 3 — Urgent (Prompt Assessment)</option>
-                    <option value={4}>Level 4 — Less Urgent</option>
-                    <option value={5}>Level 5 — Non-Urgent</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="block text-slate-400 font-bold">Known Medical History</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Hypertension, COPD, Type 2 Diabetes"
-                    value={formData.medical_history}
-                    onChange={(e) => setFormData({ ...formData, medical_history: e.target.value })}
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500"
                   />
                 </div>
 
-                <div className="space-y-1">
-                  <label className="block text-slate-400 font-bold">Known Allergies</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Penicillin, NSAIDs, None Known"
-                    value={formData.allergies}
-                    onChange={(e) => setFormData({ ...formData, allergies: e.target.value })}
-                    className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500"
-                  />
+              </div>
+            </div>
+
+            {/* Form Action Buttons */}
+            <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                <span>Care priority will be evaluated automatically by ML model</span>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold shadow-lg shadow-cyan-900/40 transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>{submitting ? 'Evaluating Clinical Intake...' : 'Complete Registration & Assess Patient'}</span>
+                </button>
+              </div>
+            </div>
+
+          </form>
+        ) : (
+          /* ============================================================ */
+          /* VIEW 2: SUCCESS STATE & ML TRIAGE RECOMMENDATION RESULT     */
+          /* ============================================================ */
+          <div className="p-6 space-y-5 overflow-y-auto">
+            
+            {/* Success Banner */}
+            <div className="p-4 rounded-2xl bg-emerald-950/40 border border-emerald-800/80 flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-emerald-950 text-emerald-400 border border-emerald-700">
+                <CheckCircle2 className="w-6 h-6" />
+              </div>
+              <div>
+                <h4 className="text-sm font-bold text-white">Patient Intake &amp; Assessment Completed</h4>
+                <p className="text-xs text-emerald-300/80">
+                  {assessmentResult.patient.first_name} {assessmentResult.patient.last_name} ({assessmentResult.patient.age}y {assessmentResult.patient.gender}) has been registered.
+                </p>
+              </div>
+            </div>
+
+            {/* Patient Identifiers */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 font-mono text-xs">
+              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
+                <span className="text-[10px] text-slate-500 uppercase font-sans font-bold block">Patient ID</span>
+                <span className="font-bold text-white">{assessmentResult.patient.patient_id}</span>
+              </div>
+              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800">
+                <span className="text-[10px] text-slate-500 uppercase font-sans font-bold block">Medical Record No. (MRN)</span>
+                <span className="font-bold text-cyan-400">{assessmentResult.patient.mrn}</span>
+              </div>
+              <div className="p-3 bg-slate-950 rounded-xl border border-slate-800 col-span-2 sm:col-span-1">
+                <span className="text-[10px] text-slate-500 uppercase font-sans font-bold block">Visit Encounter</span>
+                <span className="font-bold text-indigo-300">#{assessmentResult.encounter.encounter_id}</span>
+              </div>
+            </div>
+
+            {/* AI-SUPPORTED TRIAGE ASSESSMENT CARD */}
+            <div className="p-5 rounded-3xl bg-slate-950 border border-indigo-900/60 shadow-xl space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-indigo-400" />
+                  <span className="text-xs uppercase font-bold text-indigo-300 tracking-wider">
+                    AI-Supported Triage Assessment
+                  </span>
                 </div>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-950 text-indigo-300 border border-indigo-800">
+                  ML Supervised Model v1.0
+                </span>
+              </div>
+
+              {/* Recommended Priority */}
+              <div className="space-y-1">
+                <div className="text-[10px] text-slate-400 uppercase font-bold">Recommended Care Priority</div>
+                <div className="flex items-center gap-3">
+                  <span className="text-lg font-black text-white">
+                    {assessmentResult.priorityMeta.primary}
+                  </span>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${assessmentResult.priorityMeta.badgeCls}`}>
+                    {assessmentResult.priorityMeta.secondary}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400">{assessmentResult.priorityMeta.desc}</p>
+              </div>
+
+              {/* AI Risk & Confidence Strip */}
+              {assessmentResult.aiAssessment && (
+                <div className="grid grid-cols-2 gap-3 pt-2">
+                  <div className="p-3 bg-slate-900 rounded-xl border border-slate-800 space-y-1">
+                    <span className="text-[10px] text-slate-400 uppercase font-bold block">Estimated AI Risk</span>
+                    <div className="text-base font-black text-cyan-300 font-mono">
+                      {(assessmentResult.aiAssessment.risk_probability * 100).toFixed(1)}%
+                    </div>
+                    <span className="text-[10px] text-slate-400 block font-sans">
+                      Category: <strong>{assessmentResult.aiAssessment.risk_category}</strong>
+                    </span>
+                  </div>
+
+                  <div className="p-3 bg-slate-900 rounded-xl border border-slate-800 space-y-1">
+                    <span className="text-[10px] text-slate-400 uppercase font-bold block">AI Model Confidence</span>
+                    <div className="text-base font-black text-emerald-400 font-mono">
+                      {assessmentResult.aiAssessment.confidence_score >= 80 ? 'High' : assessmentResult.aiAssessment.confidence_score >= 60 ? 'Moderate' : 'Low'}
+                    </div>
+                    <span className="text-[10px] text-slate-400 block font-sans">
+                      Score: <strong>{assessmentResult.aiAssessment.confidence_score}%</strong>
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Top Influencing Features (SHAP) */}
+              {assessmentResult.aiExplanation?.top_features && assessmentResult.aiExplanation.top_features.length > 0 && (
+                <div className="space-y-2 pt-2 border-t border-slate-800">
+                  <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block">
+                    Factors Influencing AI Assessment (SHAP)
+                  </span>
+                  <div className="space-y-1.5">
+                    {assessmentResult.aiExplanation.top_features.slice(0, 3).map((f, i) => (
+                      <div key={i} className="p-2 bg-slate-900 rounded-lg flex items-center justify-between text-xs">
+                        <span className="text-slate-300 font-semibold">{f.feature_name || f.feature}: {f.value}</span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded font-mono ${
+                          (f.contribution || f.shap_value) > 0 ? 'bg-rose-950 text-rose-300' : 'bg-emerald-950 text-emerald-300'
+                        }`}>
+                          {(f.contribution || f.shap_value) > 0 ? `+${((f.contribution || f.shap_value) * 100).toFixed(0)}% Risk` : `${((f.contribution || f.shap_value) * 100).toFixed(0)}% Risk`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="p-3 rounded-xl bg-slate-900 border border-slate-800 text-[11px] text-slate-400 flex items-start gap-2">
+                <Shield className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+                <span>
+                  <strong>Clinical Note:</strong> AI priority is a real-time clinical recommendation. Authorized clinicians can review and adjust priority at any time in the patient workspace with documented justification.
+                </span>
               </div>
             </div>
-          </div>
 
-          {/* SECTION 3: Baseline Vital Signs */}
-          <div className="bg-slate-950/80 p-4 rounded-2xl border border-slate-800 space-y-3">
-            <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider block">
-              3. Baseline Intake Vital Signs
-            </span>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 font-mono">
-              <div className="space-y-1">
-                <label className="block text-slate-400 text-[11px] font-sans font-bold">Heart Rate (bpm) *</label>
-                <input
-                  type="number"
-                  required
-                  value={formData.hr}
-                  onChange={(e) => setFormData({ ...formData, hr: Number(e.target.value) })}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500"
-                />
-              </div>
+            {/* Success Actions */}
+            <div className="pt-2 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={resetFormForNextPatient}
+                className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold transition cursor-pointer"
+              >
+                + Register Another Patient
+              </button>
 
-              <div className="space-y-1">
-                <label className="block text-slate-400 text-[11px] font-sans font-bold">Systolic BP (mmHg) *</label>
-                <input
-                  type="number"
-                  required
-                  value={formData.sbp}
-                  onChange={(e) => setFormData({ ...formData, sbp: Number(e.target.value) })}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-slate-400 text-[11px] font-sans font-bold">Diastolic BP (mmHg)</label>
-                <input
-                  type="number"
-                  value={formData.dbp}
-                  onChange={(e) => setFormData({ ...formData, dbp: Number(e.target.value) })}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-slate-400 text-[11px] font-sans font-bold">Oxygen SpO₂ (%) *</label>
-                <input
-                  type="number"
-                  required
-                  value={formData.spo2}
-                  onChange={(e) => setFormData({ ...formData, spo2: Number(e.target.value) })}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-slate-400 text-[11px] font-sans font-bold">Resp Rate (/min) *</label>
-                <input
-                  type="number"
-                  required
-                  value={formData.rr}
-                  onChange={(e) => setFormData({ ...formData, rr: Number(e.target.value) })}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="block text-slate-400 text-[11px] font-sans font-bold">Pain Level (0-10)</label>
-                <input
-                  type="number"
-                  value={formData.pain_score}
-                  onChange={(e) => setFormData({ ...formData, pain_score: Number(e.target.value) })}
-                  className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500"
-                />
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow-lg transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <span>View in Live ED Queue</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </button>
               </div>
             </div>
-          </div>
 
-          {/* Form Actions */}
-          <div className="pt-3 border-t border-slate-800 flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold transition-colors cursor-pointer"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white font-bold shadow-lg shadow-cyan-900/40 transition-all flex items-center gap-2 disabled:opacity-50 cursor-pointer"
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>{submitting ? 'Registering Patient...' : 'Complete Registration & Assess Patient'}</span>
-            </button>
           </div>
-
-        </form>
+        )}
 
       </div>
     </div>

@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { LoadingSkeleton, EmptyState, ErrorState, AcuityBadge, SafetyStatusBadge, ConfidenceBadge, AgeGroupBadge } from './common/StateViews';
 import { PRIORITY_LEVELS } from '../utils/terminology';
+import { PriorityOverrideModal } from './common/PriorityOverrideModal';
 
 export const TriageCategoriesView = ({ onSelectPatient, onReviewPatient, onOpenRegister }) => {
   const { authHeaders, hasPermission, addToast, hospital } = useAuth();
@@ -15,6 +16,7 @@ export const TriageCategoriesView = ({ onSelectPatient, onReviewPatient, onOpenR
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedPatientForModal, setSelectedPatientForModal] = useState(null);
+  const [overrideModalEncounter, setOverrideModalEncounter] = useState(null);
   const [loadingModalDetail, setLoadingModalDetail] = useState(false);
   const [patientDetailData, setPatientDetailData] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -584,6 +586,18 @@ export const TriageCategoriesView = ({ onSelectPatient, onReviewPatient, onOpenR
               </button>
 
               <div className="flex items-center gap-2">
+                {hasPermission('triage:update') && (
+                  <button
+                    onClick={() => {
+                      setOverrideModalEncounter(selectedPatientForModal);
+                    }}
+                    className="px-3 py-2 rounded-xl bg-amber-950/80 hover:bg-amber-900 text-amber-300 border border-amber-800 text-xs font-bold transition-colors flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <Stethoscope className="w-3.5 h-3.5" />
+                    <span>Adjust Care Priority</span>
+                  </button>
+                )}
+
                 {hasPermission('physician:review') && onReviewPatient && (
                   <button
                     onClick={() => {
@@ -594,7 +608,7 @@ export const TriageCategoriesView = ({ onSelectPatient, onReviewPatient, onOpenR
                     className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-md shadow-indigo-950/40 transition-colors flex items-center gap-1.5 cursor-pointer"
                   >
                     <Stethoscope className="w-3.5 h-3.5" />
-                    <span>Open Physician Review</span>
+                    <span>Physician Review</span>
                   </button>
                 )}
 
@@ -607,13 +621,27 @@ export const TriageCategoriesView = ({ onSelectPatient, onReviewPatient, onOpenR
                   className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow-md shadow-cyan-950/40 transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
                   <Activity className="w-3.5 h-3.5" />
-                  <span>View Full Patient Care Workspace</span>
+                  <span>Full Patient Record</span>
                 </button>
               </div>
             </div>
 
           </div>
         </div>
+      )}
+
+      {/* Priority Override Modal */}
+      {overrideModalEncounter && (
+        <PriorityOverrideModal
+          isOpen={!!overrideModalEncounter}
+          encounter={overrideModalEncounter}
+          patient={overrideModalEncounter.patient}
+          onClose={() => setOverrideModalEncounter(null)}
+          onPriorityChanged={() => {
+            fetchEncounters();
+            setSelectedPatientForModal(null);
+          }}
+        />
       )}
 
     </div>

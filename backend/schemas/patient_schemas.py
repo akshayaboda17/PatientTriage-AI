@@ -4,7 +4,7 @@ from pydantic import BaseModel, Field
 class PatientCreateRequest(BaseModel):
     first_name: str = Field(..., min_length=1, max_length=100)
     last_name: str = Field(..., min_length=1, max_length=100)
-    mrn: str = Field(..., min_length=1, max_length=50)
+    mrn: Optional[str] = Field(None, max_length=50)
     age: float = Field(..., ge=0, le=130)
     gender: str = Field(..., min_length=1, max_length=30)
     phone: Optional[str] = Field(None, max_length=50)

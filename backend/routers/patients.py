@@ -21,17 +21,18 @@ def create_patient(
     Registers a new patient and logs PATIENT_CREATED.
     """
     patient_id = f"PT-{staff.hospital_id[:4]}-{uuid.uuid4().hex[:6].upper()}"
+    mrn = req.mrn.strip() if (req.mrn and req.mrn.strip()) else f"MRN-{datetime.datetime.utcnow().strftime('%y%m%d')}-{uuid.uuid4().hex[:4].upper()}"
     new_patient = Patient(
         patient_id=patient_id,
         hospital_id=staff.hospital_id,
-        first_name=req.first_name,
-        last_name=req.last_name,
-        mrn=req.mrn,
+        first_name=req.first_name.strip(),
+        last_name=req.last_name.strip(),
+        mrn=mrn,
         age=req.age,
         gender=req.gender,
-        phone=req.phone,
-        allergies=req.allergies,
-        medical_history=req.medical_history,
+        phone=req.phone.strip() if req.phone else None,
+        allergies=req.allergies.strip() if req.allergies else None,
+        medical_history=req.medical_history.strip() if req.medical_history else None,
         created_at=datetime.datetime.utcnow()
     )
     db.add(new_patient)
