@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import {
   Activity,
@@ -6,20 +6,25 @@ import {
   Users,
   ShieldAlert,
   Sparkles,
-  Brain,
   FileText,
   ShieldCheck,
   BarChart2,
   Cpu,
   UserPlus,
   LogOut,
-  ChevronDown,
-  Menu,
+  Building2,
+  User,
+  Mail,
+  Shield,
+  Layers,
+  Bed,
+  CheckCircle2,
   X,
+  Menu
 } from 'lucide-react';
 
 /* ─────────────────────────────────────────────
-   Role → pill meta
+   Role → Pill Meta
 ───────────────────────────────────────────── */
 const ROLE_META = {
   CLINICAL_DIRECTOR: {
@@ -31,12 +36,16 @@ const ROLE_META = {
     cls: 'bg-cyan-950/80 text-cyan-300 border-cyan-800/60',
   },
   EMERGENCY_PHYSICIAN: {
-    label: 'Physician',
+    label: 'Emergency Physician',
     cls: 'bg-indigo-950/80 text-indigo-300 border-indigo-800/60',
   },
   TRIAGE_NURSE: {
     label: 'Triage Nurse',
     cls: 'bg-emerald-950/80 text-emerald-300 border-emerald-800/60',
+  },
+  STAFF_NURSE: {
+    label: 'Staff Nurse',
+    cls: 'bg-teal-950/80 text-teal-300 border-teal-800/60',
   },
 };
 
@@ -46,9 +55,7 @@ const RolePill = ({ role }) => {
     cls: 'bg-slate-800 text-slate-300 border-slate-700',
   };
   return (
-    <span
-      className={`px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap ${meta.cls}`}
-    >
+    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap ${meta.cls}`}>
       {meta.label}
     </span>
   );
@@ -60,74 +67,46 @@ const RolePill = ({ role }) => {
 const NavBtn = ({ tab, active, onClick, icon: Icon, label, badge }) => (
   <button
     onClick={() => onClick(tab)}
-    className={`relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold transition-all duration-150 select-none ${
+    className={`relative flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all duration-150 select-none cursor-pointer ${
       active
-        ? 'bg-cyan-600/20 text-cyan-300 border border-cyan-500/30'
-        : 'text-slate-500 hover:text-slate-200 hover:bg-slate-800/50 border border-transparent'
+        ? 'bg-cyan-600 text-white shadow-md shadow-cyan-950/40'
+        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 border border-transparent'
     }`}
   >
     <Icon className="w-3.5 h-3.5 flex-shrink-0" />
     <span>{label}</span>
     {badge != null && badge > 0 && (
-      <span className="flex items-center justify-center min-w-[16px] h-4 px-0.5 rounded-full text-[9px] font-black bg-rose-500 text-white leading-none">
+      <span className="flex items-center justify-center min-w-[16px] h-4 px-1 rounded-full text-[9px] font-black bg-rose-500 text-white leading-none animate-pulse">
         {badge > 99 ? '99+' : badge}
       </span>
     )}
   </button>
 );
 
-/* ─────────────────────────────────────────────
-   Vertical divider
-───────────────────────────────────────────── */
-const Divider = () => (
-  <span className="w-px h-4 bg-slate-700/70 flex-shrink-0 mx-0.5" />
-);
-
-/* ─────────────────────────────────────────────
-   Mobile section label
-───────────────────────────────────────────── */
-const MobileSectionLabel = ({ children }) => (
-  <p className="text-[9px] font-bold text-slate-600 uppercase tracking-widest px-1 mt-2 mb-0.5 first:mt-0">
-    {children}
-  </p>
-);
-
-/* ─────────────────────────────────────────────
-   Mobile nav button
-───────────────────────────────────────────── */
-const MobileNavBtn = ({ tab, active, onClick, icon: Icon, label, badge }) => (
-  <button
-    onClick={() => onClick(tab)}
-    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold transition-all ${
-      active
-        ? 'bg-cyan-600/20 text-cyan-300 border border-cyan-500/30'
-        : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50 border border-transparent'
-    }`}
-  >
-    <Icon className="w-3.5 h-3.5 flex-shrink-0" />
-    {label}
-    {badge != null && badge > 0 && (
-      <span className="ml-auto flex items-center justify-center min-w-[16px] h-4 px-0.5 rounded-full text-[9px] font-black bg-rose-500 text-white">
-        {badge > 99 ? '99+' : badge}
-      </span>
-    )}
-  </button>
-);
-
-/* ─────────────────────────────────────────────
-   Main Navbar
-───────────────────────────────────────────── */
 export const Navbar = ({
   activeTab,
   setActiveTab,
   unacknowledgedAlertCount = 0,
   onOpenRegister,
 }) => {
-  const { user, hospital, logout, hasPermission, currentStaff } = useAuth();
+  const { user, hospital, logout, hasPermission, currentStaff, permissions } = useAuth();
+  const [profileOpen, setProfileOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const profileRef = useRef(null);
 
   const role = currentStaff?.role;
   const isAdmin = ['CLINICAL_DIRECTOR', 'HOSPITAL_ADMIN'].includes(role);
+
+  // Close profile dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (profileRef.current && !profileRef.current.contains(e.target)) {
+        setProfileOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const initials = currentStaff?.name
     ? currentStaff.name
@@ -136,264 +115,217 @@ export const Navbar = ({
         .slice(0, 2)
         .join('')
         .toUpperCase()
-    : 'U';
+    : 'ST';
 
   const handleTab = (tab) => {
     setActiveTab(tab);
     setMobileOpen(false);
   };
 
-  /* ── nav groups ── */
-  const clinicalItems = [
+  const navItems = [
     { tab: 'dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { tab: 'queue',     icon: Users,           label: 'ED Queue'  },
+    { tab: 'categories', icon: Layers, label: 'Triage Categories' },
+    { tab: 'capacity', icon: Bed, label: 'Beds & Staff' },
     {
       tab: 'alerts',
       icon: ShieldAlert,
       label: 'Alerts',
       badge: unacknowledgedAlertCount,
     },
-  ];
-
-  const aiItems = [
-    { tab: 'ai-risk', icon: Sparkles, label: 'AI Risk', always: true },
-    {
-      tab: 'review',
-      icon: Brain,
-      label: 'Review',
-      permission: 'physician:review',
-    },
-  ].filter((i) => i.always || hasPermission(i.permission));
-
-  const adminItems = [
-    hasPermission('audit:view') && {
-      tab: 'audit',
-      icon: FileText,
-      label: 'Audit',
-    },
-    hasPermission('staff:view') && {
-      tab: 'staff',
-      icon: ShieldCheck,
-      label: 'Staff',
-    },
-    isAdmin && { tab: 'analytics', icon: BarChart2, label: 'Analytics' },
-    isAdmin && { tab: 'mlops',     icon: Cpu,       label: 'MLOps'     },
+    hasPermission('audit:view') && { tab: 'audit', icon: FileText, label: 'Audit' },
+    hasPermission('staff:view') && { tab: 'staff', icon: ShieldCheck, label: 'Staff' },
+    isAdmin && { tab: 'mlops', icon: Cpu, label: 'MLOps' },
   ].filter(Boolean);
 
   return (
-    <>
-      <header className="sticky top-0 z-40 bg-[#0a0f1e]/95 backdrop-blur-md border-b border-slate-800/60 h-14">
-        <div className="max-w-[1440px] mx-auto px-4 sm:px-5 h-full flex items-center justify-between gap-4">
+    <header className="sticky top-0 z-40 bg-[#0a0f1e]/95 backdrop-blur-md border-b border-slate-800/80 shadow-lg">
+      <div className="max-w-[1440px] mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
 
-          {/* ── LEFT: Brand ── */}
-          <div className="flex items-center gap-2.5 flex-shrink-0">
-            {/* Logo icon */}
-            <button
-              onClick={() => handleTab('dashboard')}
-              className="flex items-center justify-center w-8 h-8 rounded-xl bg-gradient-to-tr from-cyan-700 to-cyan-500 shadow-md shadow-cyan-900/40 hover:opacity-90 transition-opacity flex-shrink-0"
-              title="Go to Dashboard"
-            >
-              <Activity className="w-[18px] h-[18px] text-white" />
-            </button>
+        {/* ── LEFT: Brand Logo & ED LIVE status ── */}
+        <div className="flex items-center gap-3 flex-shrink-0">
+          <button
+            onClick={() => handleTab('dashboard')}
+            className="flex items-center justify-center w-9 h-9 rounded-xl bg-gradient-to-tr from-cyan-600 to-blue-600 shadow-md shadow-cyan-900/30 hover:opacity-90 transition-opacity flex-shrink-0 cursor-pointer"
+            title="Go to Dashboard"
+          >
+            <Activity className="w-5 h-5 text-white" />
+          </button>
 
-            {/* Brand name + badges */}
-            <div className="flex flex-col leading-none gap-0.5">
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => handleTab('dashboard')}
-                  className="text-[15px] font-black text-slate-100 tracking-tight hover:text-white transition-colors"
-                >
-                  PatientTriage
-                  <span className="text-cyan-400">.ai</span>
-                </button>
-
-                {/* ED LIVE pulse badge */}
-                <span className="hidden sm:flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-950/70 text-emerald-400 border border-emerald-800/50">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  ED LIVE
-                </span>
-              </div>
-
-              {/* Hospital name */}
-              <p className="text-[10px] text-slate-500 font-medium truncate max-w-[160px] sm:max-w-[220px]">
-                {hospital?.name ||
-                  currentStaff?.hospital_id ||
-                  'General Hospital'}
-              </p>
-            </div>
-          </div>
-
-          {/* ── CENTER: Navigation (desktop) ── */}
-          <nav className="hidden md:flex items-center gap-0.5 bg-slate-900/70 px-2 py-1.5 rounded-xl border border-slate-800/80 flex-1 justify-center min-w-0">
-
-            {/* Clinical group */}
-            {clinicalItems.map((item) => (
-              <NavBtn
-                key={item.tab}
-                tab={item.tab}
-                active={activeTab === item.tab}
-                onClick={handleTab}
-                icon={item.icon}
-                label={item.label}
-                badge={item.badge}
-              />
-            ))}
-
-            {/* AI / Intel group */}
-            {aiItems.length > 0 && <Divider />}
-            {aiItems.map((item) => (
-              <NavBtn
-                key={item.tab}
-                tab={item.tab}
-                active={activeTab === item.tab}
-                onClick={handleTab}
-                icon={item.icon}
-                label={item.label}
-              />
-            ))}
-
-            {/* Admin group */}
-            {adminItems.length > 0 && <Divider />}
-            {adminItems.map((item) => (
-              <NavBtn
-                key={item.tab}
-                tab={item.tab}
-                active={activeTab === item.tab}
-                onClick={handleTab}
-                icon={item.icon}
-                label={item.label}
-              />
-            ))}
-          </nav>
-
-          {/* ── RIGHT: Actions ── */}
-          <div className="flex items-center gap-2 flex-shrink-0">
-
-            {/* Register Patient button */}
-            {onOpenRegister && (
+          <div className="flex flex-col leading-tight">
+            <div className="flex items-center gap-2">
               <button
-                onClick={onOpenRegister}
-                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-cyan-600/60 text-cyan-400 hover:bg-cyan-600/10 hover:border-cyan-500 text-[11px] font-semibold transition-all duration-150"
-                title="Register New Patient"
+                onClick={() => handleTab('dashboard')}
+                className="text-base font-black text-white tracking-tight hover:text-cyan-300 transition-colors cursor-pointer"
               >
-                <UserPlus className="w-3.5 h-3.5" />
-                <span>Register</span>
+                PatientTriage<span className="text-cyan-400">.ai</span>
               </button>
-            )}
-
-            {/* User avatar chip */}
-            <div className="flex items-center gap-1.5 bg-slate-900/80 pl-1.5 pr-2 py-1 rounded-xl border border-slate-800 min-w-0">
-              {/* Initials circle */}
-              <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-cyan-600 to-indigo-600 flex items-center justify-center text-white text-[10px] font-black flex-shrink-0">
-                {initials}
-              </div>
-
-              {/* Name + staff id */}
-              <div className="hidden lg:flex flex-col leading-none min-w-0 mr-1">
-                <span className="text-[11px] font-bold text-slate-200 truncate max-w-[110px]">
-                  {currentStaff?.name || 'Authorized Staff'}
-                </span>
-                <span className="text-[9px] text-slate-500 font-mono">
-                  {currentStaff?.staff_id
-                    ? `ID: ${currentStaff.staff_id}`
-                    : 'ED Staff'}
-                </span>
-              </div>
-
-              {/* Role pill */}
-              <div className="hidden sm:block">
-                <RolePill role={role} />
-              </div>
-
-              {/* Logout */}
-              <button
-                onClick={logout}
-                className="ml-1 flex items-center justify-center w-6 h-6 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-950/40 transition-all duration-150 flex-shrink-0"
-                title="Sign Out"
-              >
-                <LogOut className="w-3 h-3" />
-              </button>
+              <span className="hidden sm:flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-emerald-950/80 text-emerald-400 border border-emerald-800/50">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                ED LIVE
+              </span>
             </div>
-
-            {/* Mobile hamburger */}
-            <button
-              onClick={() => setMobileOpen((v) => !v)}
-              className="md:hidden flex items-center justify-center w-8 h-8 rounded-lg border border-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-800/60 transition-all"
-              title="Menu"
-            >
-              {mobileOpen ? (
-                <X className="w-4 h-4" />
-              ) : (
-                <Menu className="w-4 h-4" />
-              )}
-            </button>
+            <span className="text-[10px] text-slate-500 font-mono">
+              Clinical Decision Support System
+            </span>
           </div>
         </div>
 
-        {/* ── MOBILE drawer ── */}
-        {mobileOpen && (
-          <div className="md:hidden border-t border-slate-800/60 bg-[#0a0f1e]/98 backdrop-blur-md px-4 py-3 flex flex-col gap-1">
+        {/* ── CENTER: Navigation Tabs (Desktop) ── */}
+        <nav className="hidden lg:flex items-center gap-1 bg-slate-950/80 px-2 py-1.5 rounded-2xl border border-slate-800/90 shadow-inner">
+          {navItems.map((item) => (
+            <NavBtn
+              key={item.tab}
+              tab={item.tab}
+              active={activeTab === item.tab}
+              onClick={handleTab}
+              icon={item.icon}
+              label={item.label}
+              badge={item.badge}
+            />
+          ))}
+        </nav>
 
-            <MobileSectionLabel>Clinical</MobileSectionLabel>
-            {clinicalItems.map((item) => (
-              <MobileNavBtn
-                key={item.tab}
-                tab={item.tab}
-                active={activeTab === item.tab}
-                onClick={handleTab}
-                icon={item.icon}
-                label={item.label}
-                badge={item.badge}
-              />
-            ))}
+        {/* ── RIGHT CORNER ON EVERY PAGE: Hospital Name + Profile Circle ── */}
+        <div className="flex items-center gap-3">
+          
+          {/* Quick Add Patient Button */}
+          {hasPermission('patient:create') && onOpenRegister && (
+            <button
+              onClick={onOpenRegister}
+              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow-md shadow-cyan-900/30 transition-all cursor-pointer"
+            >
+              <UserPlus className="w-3.5 h-3.5" />
+              <span>Add Patient</span>
+            </button>
+          )}
 
-            {aiItems.length > 0 && (
-              <>
-                <MobileSectionLabel>AI / Intel</MobileSectionLabel>
-                {aiItems.map((item) => (
-                  <MobileNavBtn
-                    key={item.tab}
-                    tab={item.tab}
-                    active={activeTab === item.tab}
-                    onClick={handleTab}
-                    icon={item.icon}
-                    label={item.label}
-                  />
-                ))}
-              </>
-            )}
+          {/* Hospital Name display */}
+          <div className="hidden sm:flex flex-col text-right leading-tight max-w-[200px]">
+            <span className="text-xs font-bold text-slate-200 truncate">
+              {hospital?.name || currentStaff?.hospital_id || 'Demo General Hospital'}
+            </span>
+            <span className="text-[10px] text-slate-500 font-mono">
+              ID: {currentStaff?.hospital_id || 'DEMO001'}
+            </span>
+          </div>
 
-            {adminItems.length > 0 && (
-              <>
-                <MobileSectionLabel>Admin</MobileSectionLabel>
-                {adminItems.map((item) => (
-                  <MobileNavBtn
-                    key={item.tab}
-                    tab={item.tab}
-                    active={activeTab === item.tab}
-                    onClick={handleTab}
-                    icon={item.icon}
-                    label={item.label}
-                  />
-                ))}
-              </>
-            )}
+          {/* Small Profile Circle Avatar with Interactive Popup */}
+          <div className="relative" ref={profileRef}>
+            <button
+              onClick={() => setProfileOpen(!profileOpen)}
+              className="flex items-center justify-center w-10 h-10 rounded-full bg-gradient-to-tr from-cyan-600 via-indigo-600 to-purple-600 border-2 border-cyan-400/40 text-white font-black text-xs shadow-lg shadow-cyan-950/50 hover:scale-105 active:scale-95 transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-cyan-400"
+              title="Click to view logged-in staff info"
+              aria-label="User Profile"
+            >
+              {initials}
+            </button>
 
-            {onOpenRegister && (
-              <button
-                onClick={() => {
-                  onOpenRegister();
-                  setMobileOpen(false);
-                }}
-                className="mt-2 flex items-center gap-2 px-3 py-2 rounded-lg border border-cyan-600/50 text-cyan-400 hover:bg-cyan-600/10 text-xs font-semibold transition-all"
-              >
-                <UserPlus className="w-3.5 h-3.5" />
-                Register Patient
-              </button>
+            {/* Profile Info Modal Dropdown */}
+            {profileOpen && (
+              <div className="absolute right-0 mt-3 w-80 bg-slate-900 border border-slate-800 rounded-3xl shadow-2xl p-5 space-y-4 z-50 animate-in fade-in zoom-in-95 duration-150">
+                
+                {/* Profile Header */}
+                <div className="flex items-start gap-3 border-b border-slate-800 pb-3.5">
+                  <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-cyan-600 to-indigo-600 flex items-center justify-center text-white font-black text-base shadow-md">
+                    {initials}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h4 className="text-sm font-bold text-white truncate">{currentStaff.name}</h4>
+                    <p className="text-[11px] text-cyan-400 font-mono">{currentStaff.staff_id}</p>
+                    <div className="mt-1">
+                      <RolePill role={currentStaff.role} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Info Fields */}
+                <div className="space-y-2.5 text-xs">
+                  <div className="flex items-center gap-2 text-slate-300">
+                    <Building2 className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <div className="truncate">
+                      <span className="text-[10px] text-slate-500 block uppercase font-bold">Facility:</span>
+                      <span className="font-semibold text-slate-200">{hospital?.name || currentStaff.hospital_id}</span>
+                    </div>
+                  </div>
+
+                  {currentStaff.email && (
+                    <div className="flex items-center gap-2 text-slate-300">
+                      <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <div className="truncate">
+                        <span className="text-[10px] text-slate-500 block uppercase font-bold">Email:</span>
+                        <span className="font-mono text-slate-300">{currentStaff.email}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="flex items-center gap-2 text-slate-300">
+                    <Shield className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <div>
+                      <span className="text-[10px] text-slate-500 block uppercase font-bold">Session Access:</span>
+                      <span className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
+                        <CheckCircle2 className="w-3 h-3" />
+                        Authenticated &amp; Role-Verified
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Logout Button */}
+                <div className="pt-2 border-t border-slate-800">
+                  <button
+                    onClick={() => {
+                      setProfileOpen(false);
+                      logout();
+                    }}
+                    className="w-full py-2.5 px-3 rounded-xl bg-rose-950/80 hover:bg-rose-900 text-rose-200 text-xs font-bold border border-rose-800/80 transition-all flex items-center justify-center gap-2 shadow-md cursor-pointer"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Sign Out of Session</span>
+                  </button>
+                </div>
+              </div>
             )}
           </div>
-        )}
-      </header>
-    </>
+
+          {/* Mobile Hamburger Toggle */}
+          <button
+            onClick={() => setMobileOpen(!mobileOpen)}
+            className="lg:hidden p-2 rounded-xl bg-slate-900 border border-slate-800 text-slate-400 hover:text-white cursor-pointer"
+          >
+            {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+        </div>
+
+      </div>
+
+      {/* Mobile Drawer */}
+      {mobileOpen && (
+        <div className="lg:hidden bg-slate-950 border-b border-slate-800 px-4 py-3 space-y-1 animate-in slide-in-from-top-2">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const active = activeTab === item.tab;
+            return (
+              <button
+                key={item.tab}
+                onClick={() => handleTab(item.tab)}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  active ? 'bg-cyan-600 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <Icon className="w-4 h-4" />
+                  <span>{item.label}</span>
+                </div>
+                {item.badge != null && item.badge > 0 && (
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-rose-500 text-white">
+                    {item.badge}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </header>
   );
 };

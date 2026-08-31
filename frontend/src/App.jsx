@@ -4,7 +4,8 @@ import { Navbar } from './components/Navbar';
 import { NotificationToast } from './components/NotificationToast';
 import { LoginPage } from './components/LoginPage';
 import { DashboardView } from './components/DashboardView';
-import { EDQueueView } from './components/EDQueueView';
+import { TriageCategoriesView } from './components/TriageCategoriesView';
+import { HospitalCapacityView } from './components/HospitalCapacityView';
 import { AlertsDashboard } from './components/AlertsDashboard';
 import { PatientDetailView } from './components/PatientDetailView';
 import { PhysicianReviewWorkspace } from './components/PhysicianReviewWorkspace';
@@ -16,7 +17,7 @@ import { PatientRegistrationModal } from './components/PatientRegistrationModal'
 
 const MainAppContent = () => {
   const { isAuthenticated, authHeaders } = useAuth();
-  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard', 'queue', 'alerts', 'audit', 'staff', 'analytics', 'mlops', 'patient-detail', 'physician-review'
+  const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard', 'categories', 'capacity', 'alerts', 'audit', 'staff', 'mlops', 'patient-detail', 'physician-review'
   const [selectedEncounterId, setSelectedEncounterId] = useState(null);
   const [unacknowledgedCount, setUnacknowledgedCount] = useState(0);
 
@@ -63,7 +64,7 @@ const MainAppContent = () => {
     if (newEncounterId) {
       handleSelectPatient(newEncounterId);
     } else {
-      setActiveTab('queue');
+      setActiveTab('dashboard');
     }
   };
 
@@ -79,9 +80,10 @@ const MainAppContent = () => {
 
   return (
     <div className="min-h-screen bg-[#090d16] text-slate-100 flex flex-col selection:bg-cyan-500 selection:text-white">
-      {/* Top Navigation */}
+      
+      {/* Top Navigation Bar with Hospital Name & Profile Avatar on every page */}
       <Navbar
-        activeTab={['patient-detail', 'physician-review'].includes(activeTab) ? 'queue' : activeTab}
+        activeTab={['patient-detail', 'physician-review'].includes(activeTab) ? 'dashboard' : activeTab}
         setActiveTab={(tab) => {
           setSelectedEncounterId(null);
           setActiveTab(tab);
@@ -91,10 +93,9 @@ const MainAppContent = () => {
       />
 
       {/* Main Clinical Viewport */}
-      <main className="flex-1 max-w-[1400px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-
+      <main className="flex-1 max-w-[1440px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
         
-        {/* Executive Dashboard */}
+        {/* TAB 1: ED Dashboard & Live Patient Queue with Add Patient Option */}
         {activeTab === 'dashboard' && (
           <DashboardView
             onSelectPatient={handleSelectPatient}
@@ -107,17 +108,24 @@ const MainAppContent = () => {
           />
         )}
 
-        {/* ED Queue */}
-        {activeTab === 'queue' && (
-          <EDQueueView
+        {/* TAB 2: Patient Triage Acuity Categories & Doctor Routing */}
+        {activeTab === 'categories' && (
+          <TriageCategoriesView
             onSelectPatient={handleSelectPatient}
             onReviewPatient={handleReviewPatient}
             onOpenRegister={() => setIsRegisterOpen(true)}
-            onAlertStateChanged={handleAlertStateChanged}
           />
         )}
 
-        {/* Clinical Alerts */}
+        {/* TAB 3: Hospital Bed Capacity & Available On-Duty Staff */}
+        {activeTab === 'capacity' && (
+          <HospitalCapacityView
+            onSelectPatient={handleSelectPatient}
+            onOpenRegister={() => setIsRegisterOpen(true)}
+          />
+        )}
+
+        {/* TAB 4: Clinical Alerts & Deterioration */}
         {activeTab === 'alerts' && (
           <AlertsDashboard
             onSelectPatient={handleSelectPatient}
@@ -125,38 +133,38 @@ const MainAppContent = () => {
           />
         )}
 
-        {/* Patient Detail Chart */}
+        {/* Individual Patient Detail Clinical Chart */}
         {activeTab === 'patient-detail' && selectedEncounterId && (
           <PatientDetailView
             encounterId={selectedEncounterId}
-            onBack={() => setActiveTab('queue')}
+            onBack={() => setActiveTab('dashboard')}
             onOpenReview={() => setActiveTab('physician-review')}
             onAlertStateChanged={handleAlertStateChanged}
           />
         )}
 
-        {/* Physician Review Console */}
+        {/* Physician Review & Override Workspace */}
         {activeTab === 'physician-review' && selectedEncounterId && (
           <PhysicianReviewWorkspace
             encounterId={selectedEncounterId}
-            onBack={() => setActiveTab('queue')}
+            onBack={() => setActiveTab('dashboard')}
             onDecisionSaved={() => {
               fetchAlertCount();
             }}
           />
         )}
 
-        {/* Clinical Audit Trail */}
+        {/* Governance: Clinical Audit Trail */}
         {activeTab === 'audit' && <AuditLogView />}
 
         {/* Staff Management & RBAC */}
         {activeTab === 'staff' && <StaffManagementView />}
 
-        {/* Clinical Analytics */}
-        {activeTab === 'analytics' && <AnalyticsView />}
-
         {/* MLOps & Model Governance */}
         {activeTab === 'mlops' && <MLOpsDashboard />}
+
+        {/* Clinical Analytics */}
+        {activeTab === 'analytics' && <AnalyticsView />}
 
       </main>
 
