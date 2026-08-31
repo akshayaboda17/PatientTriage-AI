@@ -144,7 +144,7 @@ def get_hospital_capacity_and_resources(
                 "encounter_id": enc.encounter_id,
                 "patient_name": f"{patient.first_name} {patient.last_name}" if patient else "Patient",
                 "chief_complaint": enc.chief_complaint,
-                "status": enc.status.value
+                "status": enc.status.value if hasattr(enc.status, "value") else str(enc.status)
             }
 
     # Generate standard structured bed map according to scale

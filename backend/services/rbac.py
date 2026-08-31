@@ -29,6 +29,7 @@ ROLE_PERMISSIONS: dict[StaffRoleEnum, Set[str]] = {
         "dashboard:view"
     },
     StaffRoleEnum.EMERGENCY_PHYSICIAN: {
+        "hospital:view",
         "patient:view", "patient:create", "patient:update",
         "triage:view", "triage:create", "triage:update",
         "vitals:view", "vitals:create", "vitals:update",
@@ -40,6 +41,7 @@ ROLE_PERMISSIONS: dict[StaffRoleEnum, Set[str]] = {
         "dashboard:view"
     },
     StaffRoleEnum.TRIAGE_NURSE: {
+        "hospital:view",
         "patient:view", "patient:create", "patient:update",
         "triage:view", "triage:create", "triage:update",
         "vitals:view", "vitals:create", "vitals:update",
@@ -49,6 +51,7 @@ ROLE_PERMISSIONS: dict[StaffRoleEnum, Set[str]] = {
         "dashboard:view"
     },
     StaffRoleEnum.STAFF_NURSE: {
+        "hospital:view",
         "patient:view", "patient:update",
         "triage:view",
         "vitals:view", "vitals:create", "vitals:update",
@@ -58,11 +61,13 @@ ROLE_PERMISSIONS: dict[StaffRoleEnum, Set[str]] = {
         "dashboard:view"
     },
     StaffRoleEnum.EMERGENCY_TECHNICIAN: {
+        "hospital:view",
         "patient:view",
         "vitals:view", "vitals:create",
         "triage:view",
         "alert:view",
-        "clinical_decision:view"
+        "clinical_decision:view",
+        "dashboard:view"
     }
 }
 
