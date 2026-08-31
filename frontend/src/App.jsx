@@ -78,7 +78,7 @@ const MainAppContent = () => {
   }
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-cyan-500 selection:text-white">
+    <div className="min-h-screen bg-[#090d16] text-slate-100 flex flex-col selection:bg-cyan-500 selection:text-white">
       {/* Top Navigation */}
       <Navbar
         activeTab={['patient-detail', 'physician-review'].includes(activeTab) ? 'queue' : activeTab}
@@ -91,7 +91,8 @@ const MainAppContent = () => {
       />
 
       {/* Main Clinical Viewport */}
-      <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+      <main className="flex-1 max-w-[1400px] w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
+
         
         {/* Executive Dashboard */}
         {activeTab === 'dashboard' && (

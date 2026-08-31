@@ -26,7 +26,8 @@ from routers import (
     audit_router,
     staff_router,
     demo_router,
-    mlops_router
+    mlops_router,
+    hospital_config_router
 )
 from routers.demo import seed_demo_data
 
@@ -72,6 +73,7 @@ app.include_router(audit_router)
 app.include_router(staff_router)
 app.include_router(demo_router)
 app.include_router(mlops_router)
+app.include_router(hospital_config_router)
 
 # Auto-seed demo on startup if table is empty
 @app.on_event("startup")

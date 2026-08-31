@@ -1,9 +1,20 @@
 import React from 'react';
-import { Sparkles, Stethoscope, ShieldAlert, Cpu, Activity, Info } from 'lucide-react';
+import { Sparkles, Stethoscope, ShieldAlert, Cpu, Activity, Info, AlertTriangle, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 export const AiRiskCard = ({ aiRisk, onGenerateAi, generatingAi, onOpenReview }) => {
   const { hasPermission } = useAuth();
+
+  const getConfidenceBadge = (confidence) => {
+    switch (confidence) {
+      case 'HIGH':
+        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-950/90 text-emerald-300 border border-emerald-700">Confidence: HIGH</span>;
+      case 'MODERATE':
+        return <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-950/90 text-amber-300 border border-amber-700">Confidence: MODERATE</span>;
+      default:
+        return <span className="px-2 py-0.5 rounded text-[10px] font-black bg-rose-950 text-rose-300 border border-rose-600 animate-pulse">Confidence: LOW ⚠️</span>;
+    }
+  };
 
   return (
     <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
@@ -38,16 +49,46 @@ export const AiRiskCard = ({ aiRisk, onGenerateAi, generatingAi, onOpenReview })
                 <span className="text-xs text-slate-400 font-mono">P(Y=1)</span>
               </div>
             </div>
-            <span className={`px-3 py-1.5 rounded-xl text-xs font-black tracking-wide border shadow-sm ${
-              aiRisk.risk_category === 'HIGH' || aiRisk.risk_category === 'CRITICAL'
-                ? 'bg-rose-950/90 text-rose-300 border-rose-700 shadow-rose-950/50'
-                : aiRisk.risk_category === 'MODERATE'
-                ? 'bg-amber-950/90 text-amber-300 border-amber-700 shadow-amber-950/50'
-                : 'bg-emerald-950/90 text-emerald-300 border-emerald-700 shadow-emerald-950/50'
-            }`}>
-              {aiRisk.risk_category} RISK
-            </span>
+            
+            <div className="flex flex-col items-end gap-1.5">
+              <span className={`px-3 py-1.5 rounded-xl text-xs font-black tracking-wide border shadow-sm ${
+                aiRisk.risk_category === 'HIGH' || aiRisk.risk_category === 'CRITICAL'
+                  ? 'bg-rose-950/90 text-rose-300 border-rose-700 shadow-rose-950/50'
+                  : aiRisk.risk_category === 'MODERATE'
+                  ? 'bg-amber-950/90 text-amber-300 border-amber-700 shadow-amber-950/50'
+                  : 'bg-emerald-950/90 text-emerald-300 border-emerald-700 shadow-emerald-950/50'
+              }`}>
+                {aiRisk.risk_category} RISK
+              </span>
+              {getConfidenceBadge(aiRisk.confidence || 'HIGH')}
+            </div>
           </div>
+
+          {/* Safety Escalation Alert (if low confidence or safety escalation required) */}
+          {(aiRisk.confidence === 'LOW' || aiRisk.safety_status === 'ESCALATE') && (
+            <div className="p-3 bg-rose-950/70 border border-rose-600/80 rounded-xl text-rose-200 text-xs space-y-1">
+              <div className="flex items-center gap-1.5 font-bold text-rose-300">
+                <ShieldAlert className="w-4 h-4 text-rose-400 animate-pulse" />
+                <span>Safety-First Escalation Active</span>
+              </div>
+              <p className="text-[11px] text-rose-200/90">
+                Uncertain AI prediction — under-triage protection applied. Mandatory clinician review required before disposition.
+              </p>
+            </div>
+          )}
+
+          {/* Discordance Notice (if symptoms & vitals conflict) */}
+          {aiRisk.discordance_info?.is_discordant && (
+            <div className="p-2.5 bg-yellow-950/60 border border-yellow-800/60 rounded-xl text-yellow-200 text-[11px] space-y-0.5">
+              <div className="flex items-center gap-1 font-bold text-yellow-300">
+                <AlertCircle className="w-3.5 h-3.5" />
+                <span>Clinical Information is Discordant</span>
+              </div>
+              <p className="text-yellow-200/80 text-[10px]">
+                {aiRisk.discordance_info.explanation}
+              </p>
+            </div>
+          )}
 
           {/* Key Clinical Biomarkers & Predicted ESI Grid */}
           <div className="grid grid-cols-3 gap-2 text-xs font-mono">

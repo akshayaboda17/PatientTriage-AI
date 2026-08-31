@@ -61,30 +61,138 @@ def get_ed_encounters(
         ).all()
 
         wait_mins = int((now - enc.arrival_time).total_seconds() / 60) if enc.arrival_time else 0
+        triage_level = latest_triage.triage_level if latest_triage else 3
+
+        # Round 2: Services
+        from services.age_service import AgeService
+        from services.uncertainty_service import UncertaintyService, ConfidenceLevelEnum
+        from services.safety_service import SafetyService, SafetyStatusEnum
+        from services.hospital_config_service import HospitalConfigService
+        from models import AlertSeverityEnum, DetectionSourceEnum
+
+        # 1. Age Group
+        age_group = AgeService.determine_age_group(patient.age if patient else None)
+
+        # 2. Wait-Time Safe Threshold Evaluation
+        wait_eval = HospitalConfigService.evaluate_wait_time(staff.hospital_id, triage_level, wait_mins)
+
+        # Automatic wait threshold breach alert generation (deduplicated)
+        if wait_eval["exceeded"] and enc.status == EncounterStatusEnum.WAITING:
+            has_wait_alert = any(a.alert_type == "SAFE_WAIT_THRESHOLD_EXCEEDED" for a in active_alerts)
+            if not has_wait_alert:
+                new_wait_alert = ClinicalAlert(
+                    alert_id=f"ALERT-WAIT-{uuid.uuid4().hex[:6].upper()}",
+                    hospital_id=staff.hospital_id,
+                    patient_id=enc.patient_id,
+                    encounter_id=enc.encounter_id,
+                    alert_type="SAFE_WAIT_THRESHOLD_EXCEEDED",
+                    severity=AlertSeverityEnum.CRITICAL if triage_level <= 2 else AlertSeverityEnum.HIGH,
+                    status=AlertStatusEnum.UNACKNOWLEDGED,
+                    detected_at=now,
+                    detection_source=DetectionSourceEnum.RULE_BASED,
+                    detection_rule_id="RULE-SAFE-WAIT-EXCEEDED-01",
+                    summary=f"🚨 REASSESSMENT REQUIRED: Waiting time ({wait_mins} min) exceeds safe threshold ({wait_eval['threshold_mins']} min) for ESI {triage_level}.",
+                    evidence=[{"parameter": "ED_WAIT_TIME", "threshold_mins": wait_eval["threshold_mins"], "wait_mins": wait_mins}]
+                )
+                db.add(new_wait_alert)
+                db.commit()
+                active_alerts.append(new_wait_alert)
+
+        # 3. History Status
+        history_status = SafetyService.classify_history_status(
+            getattr(patient, 'medical_history', None) if patient else None,
+            getattr(patient, 'allergies', None) if patient else None
+        )
+        is_zero_history = (history_status.value == "ZERO_HISTORY_FIRST_TIME")
+
+        # 4. Discordance Detection
+        discordance_info = SafetyService.detect_clinical_discordance(
+            chief_complaint=enc.chief_complaint or "",
+            vitals=latest_obs.to_dict() if latest_obs else {},
+            age_group=age_group
+        )
+
+        # 5. Risk & Confidence Resolution
+        ai_risk_dict = latest_ai_risk.to_dict() if latest_ai_risk else None
+        risk_category = latest_ai_risk.risk_category.value if latest_ai_risk else "MODERATE"
+        risk_prob = latest_ai_risk.risk_probability if (latest_ai_risk and latest_ai_risk.risk_probability is not None) else 0.5
+        
+        uncertainty_info = UncertaintyService.calculate_uncertainty(
+            probability=risk_prob,
+            imputed_feature_count=0 if latest_obs else 10,
+            total_feature_count=40,
+            age_group=age_group,
+            has_discordant_signals=discordance_info["is_discordant"],
+            is_zero_history=is_zero_history
+        )
+        confidence_level = uncertainty_info["confidence"]
+
+        if ai_risk_dict:
+            ai_risk_dict["confidence"] = confidence_level
+            ai_risk_dict["uncertainty_score"] = uncertainty_info["uncertainty_score"]
+            ai_risk_dict["age_group"] = age_group.value
+            ai_risk_dict["discordance_info"] = discordance_info
+
+        # 6. Patient Safety Workflow Status
+        safety_eval = SafetyService.determine_safety_status(
+            ai_risk_category=risk_category,
+            confidence_level=confidence_level,
+            wait_threshold_exceeded=wait_eval["exceeded"],
+            has_active_deterioration=len(active_alerts) > 0,
+            has_discordance=discordance_info["is_discordant"],
+            age_group=age_group,
+            is_zero_history=is_zero_history
+        )
 
         queue_list.append({
             "encounter_id": enc.encounter_id,
             "patient_id": enc.patient_id,
             "patient_name": f"{patient.first_name} {patient.last_name}" if patient else "Unknown",
             "age": patient.age if patient else None,
+            "age_group": age_group.value,
             "gender": patient.gender if patient else None,
+            "history_status": history_status.value,
             "arrival_time": enc.arrival_time.isoformat() if enc.arrival_time else None,
             "wait_time_mins": wait_mins,
+            "wait_evaluation": wait_eval,
             "status": enc.status.value,
             "bed_number": enc.bed_number,
             "chief_complaint": enc.chief_complaint,
-            "triage_level": latest_triage.triage_level if latest_triage else 3,
+            "triage_level": triage_level,
             "acuity_category": latest_triage.acuity_category if latest_triage else "Urgent",
             "latest_vitals": latest_obs.to_dict() if latest_obs else None,
-            "ai_risk": latest_ai_risk.to_dict() if latest_ai_risk else None,
+            "ai_risk": ai_risk_dict,
+            "confidence": confidence_level,
+            "safety_status": safety_eval["status"],
+            "safety_reasons": safety_eval["reasons"],
+            "discordance_info": discordance_info,
             "active_alert_count": len(active_alerts),
             "max_alert_severity": max([a.severity.value for a in active_alerts], default=None) if active_alerts else None,
             "alerts": [a.to_dict() for a in active_alerts]
         })
 
-    # Sort queue by priority: Triage Level (1 is highest priority), then longest wait time
-    sorted_queue = sorted(queue_list, key=lambda x: (x['triage_level'], -x['wait_time_mins']))
-    return {"queue": sorted_queue, "hospital_id": staff.hospital_id, "total": len(sorted_queue)}
+    # Retrieve surge mode
+    from services.hospital_config_service import HospitalConfigService
+    hosp_cfg = HospitalConfigService.get_config(staff.hospital_id)
+    is_surge = hosp_cfg.get("surge_mode_active", False)
+
+    # Sort queue:
+    # Under surge mode: Prioritize by (1) Safety ESCALATE/REASSESS, (2) Triage Level, (3) Wait time
+    if is_surge:
+        def surge_sort_key(x):
+            safety_rank = 0 if x["safety_status"] == "ESCALATE" else (1 if x["safety_status"] == "REASSESS" else (2 if x["safety_status"] == "MONITOR" else 3))
+            return (safety_rank, x['triage_level'], -x['wait_time_mins'])
+        sorted_queue = sorted(queue_list, key=surge_sort_key)
+    else:
+        sorted_queue = sorted(queue_list, key=lambda x: (x['triage_level'], -x['wait_time_mins']))
+
+    return {
+        "queue": sorted_queue,
+        "hospital_id": staff.hospital_id,
+        "total": len(sorted_queue),
+        "surge_mode": is_surge,
+        "hospital_config": hosp_cfg
+    }
 
 @router.post("")
 def create_encounter(

@@ -2,13 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { 
   Users, UserPlus, Shield, CheckCircle2, XCircle, Search, 
-  RefreshCw, Lock, AlertTriangle, X, Check, Edit2, ShieldAlert
+  RefreshCw, Lock, AlertTriangle, X, Check, Edit2, ShieldAlert,
+  ShieldCheck, UserCheck, Mail, Building2
 } from 'lucide-react';
+import { LoadingSkeleton, EmptyState, ErrorState } from './common/StateViews';
 
 export const StaffManagementView = () => {
-  const { authHeaders, hasPermission, addToast, currentStaff } = useAuth();
+  const { authHeaders, hasPermission, addToast, currentStaff, hospital } = useAuth();
   const [staffList, setStaffList] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [roleFilter, setRoleFilter] = useState('ALL');
 
@@ -32,16 +35,21 @@ export const StaffManagementView = () => {
 
   const fetchStaff = async () => {
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch('/api/staff', { headers: authHeaders });
-      if (res.ok) {
-        const data = await res.json();
-        setStaffList(data.staff || []);
-      } else if (res.status === 403) {
-        addToast("Access Denied: You need 'staff:view' permission.", "error");
+      if (res.status === 403) {
+        setError("Access Denied: You need 'staff:view' permission to view the staff directory.");
+        return;
       }
+      if (!res.ok) {
+        throw new Error(`Server returned HTTP ${res.status}: Failed to load staff directory.`);
+      }
+      const data = await res.json();
+      setStaffList(data.staff || []);
     } catch (err) {
-      addToast("Failed to load hospital staff directory.", "error");
+      console.error('Staff directory error:', err);
+      setError(err.message || 'Failed to load hospital staff directory.');
     } finally {
       setLoading(false);
     }
@@ -62,7 +70,12 @@ export const StaffManagementView = () => {
           ...authHeaders,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(newStaff)
+        body: JSON.stringify({
+          staff_id: newStaff.staff_id.trim().toUpperCase(),
+          name: newStaff.name.trim(),
+          email: newStaff.email.trim() || undefined,
+          role: newStaff.role
+        })
       });
 
       if (res.ok) {
@@ -71,7 +84,7 @@ export const StaffManagementView = () => {
         setNewStaff({ staff_id: '', name: '', email: '', role: 'EMERGENCY_PHYSICIAN' });
         fetchStaff();
       } else {
-        const err = await res.json();
+        const err = await res.json().catch(() => ({}));
         addToast(err.detail || "Failed to create staff account.", "error");
       }
     } catch (err) {
@@ -95,7 +108,7 @@ export const StaffManagementView = () => {
         setDeactivatingStaff(null);
         fetchStaff();
       } else {
-        const err = await res.json();
+        const err = await res.json().catch(() => ({}));
         addToast(err.detail || "Failed to deactivate staff.", "error");
       }
     } catch (err) {
@@ -131,22 +144,29 @@ export const StaffManagementView = () => {
       case 'STAFF_NURSE':
         return <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-teal-950 text-teal-300 border border-teal-800">Staff Nurse</span>;
       default:
-        return <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-800 text-slate-300 border border-slate-700">Emergency Tech</span>;
+        return <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-800 text-slate-300 border border-slate-700">Staff ({role})</span>;
     }
   };
 
   return (
     <div className="space-y-6">
       
-      {/* Header */}
+      {/* Top Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl">
         <div className="flex items-center gap-3">
           <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
-            <Users className="w-6 h-6" />
+            <ShieldCheck className="w-6 h-6" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-white tracking-tight">Hospital Staff Management & RBAC</h1>
-            <p className="text-xs text-slate-400">Authorized personnel accounts, clinical roles, and active credential governance</p>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold text-white tracking-tight">Hospital Staff Directory &amp; RBAC Governance</h1>
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-mono bg-slate-800 text-slate-300 border border-slate-700">
+                Facility: {hospital?.name || currentStaff?.hospital_id}
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Authorized clinical accounts, multi-factor credential governance, and RBAC permission assignment
+            </p>
           </div>
         </div>
 
@@ -154,33 +174,34 @@ export const StaffManagementView = () => {
           {hasPermission('staff:create') && (
             <button
               onClick={() => setShowAddModal(true)}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow-md shadow-cyan-900/30 transition-all"
+              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow-md shadow-cyan-900/30 transition-all cursor-pointer"
             >
               <UserPlus className="w-4 h-4" />
-              <span>Add Staff Member</span>
+              <span>Add Staff Account</span>
             </button>
           )}
 
           <button
             onClick={fetchStaff}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-colors"
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-colors disabled:opacity-50 cursor-pointer"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             <span>Refresh</span>
           </button>
         </div>
       </div>
 
       {/* Filter & Search Bar */}
-      <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-xl flex flex-col sm:flex-row items-center justify-between gap-3 shadow-md">
-        <div className="relative w-full sm:w-72">
+      <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl shadow-lg flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="relative w-full sm:w-80">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
           <input
             type="text"
             placeholder="Search staff name, ID, email..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500"
+            className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 font-sans"
           />
         </div>
 
@@ -188,9 +209,9 @@ export const StaffManagementView = () => {
           <select
             value={roleFilter}
             onChange={(e) => setRoleFilter(e.target.value)}
-            className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-slate-300 font-medium focus:outline-none focus:border-cyan-500"
+            className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-slate-300 font-medium focus:outline-none focus:border-cyan-500 cursor-pointer"
           >
-            <option value="ALL">All Roles</option>
+            <option value="ALL">All Clinical Roles</option>
             <option value="CLINICAL_DIRECTOR">Clinical Director</option>
             <option value="EMERGENCY_PHYSICIAN">Emergency Physician</option>
             <option value="TRIAGE_NURSE">Triage Nurse</option>
@@ -202,58 +223,70 @@ export const StaffManagementView = () => {
       </div>
 
       {/* Staff Table */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+      <div className="bg-slate-900/90 border border-slate-800 rounded-3xl shadow-xl overflow-hidden">
         {loading ? (
-          <div className="p-12 text-center text-slate-400 text-sm">Loading staff directory...</div>
+          <LoadingSkeleton type="table" rows={6} />
+        ) : error ? (
+          <div className="p-8">
+            <ErrorState message={error} onRetry={fetchStaff} />
+          </div>
         ) : filteredStaff.length === 0 ? (
-          <div className="p-12 text-center text-slate-400 text-sm">No staff accounts found matching criteria.</div>
+          <div className="p-8">
+            <EmptyState
+              icon={Users}
+              title="No Staff Accounts Found"
+              description="No authorized personnel accounts match your search filters."
+              actionText={hasPermission('staff:create') ? "Add Staff Member" : undefined}
+              onAction={() => setShowAddModal(true)}
+            />
+          </div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs text-slate-300">
               <thead className="bg-slate-950/80 text-slate-400 uppercase text-[10px] font-bold border-b border-slate-800">
                 <tr>
-                  <th className="px-4 py-3.5">Staff Member</th>
-                  <th className="px-4 py-3.5">Staff ID</th>
-                  <th className="px-4 py-3.5">Role</th>
-                  <th className="px-4 py-3.5">Email</th>
-                  <th className="px-4 py-3.5">Account Status</th>
-                  <th className="px-4 py-3.5 text-right">Actions</th>
+                  <th className="px-5 py-3.5">Staff Personnel</th>
+                  <th className="px-5 py-3.5">Staff ID</th>
+                  <th className="px-5 py-3.5">Clinical Role</th>
+                  <th className="px-5 py-3.5">Email Address</th>
+                  <th className="px-5 py-3.5">Account Status</th>
+                  <th className="px-5 py-3.5 text-right">Governance Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800/60">
+              <tbody className="divide-y divide-slate-800/60 font-sans">
                 {filteredStaff.map((staff) => (
                   <tr key={staff.staff_id} className="hover:bg-slate-800/40 transition-colors">
-                    <td className="px-4 py-4">
+                    <td className="px-5 py-4">
                       <div className="font-bold text-slate-100 text-sm">{staff.name}</div>
-                      <div className="text-[10px] text-slate-400 font-mono">Hospital: {staff.hospital_id}</div>
+                      <div className="text-[10px] text-slate-500 font-mono">Facility: {staff.hospital_id}</div>
                     </td>
-                    <td className="px-4 py-4 font-mono text-cyan-400 font-semibold">
+                    <td className="px-5 py-4 font-mono text-cyan-400 font-bold">
                       {staff.staff_id}
                     </td>
-                    <td className="px-4 py-4 whitespace-nowrap">
+                    <td className="px-5 py-4 whitespace-nowrap">
                       {getRoleBadge(staff.role)}
                     </td>
-                    <td className="px-4 py-4 text-slate-300">
+                    <td className="px-5 py-4 text-slate-300 font-mono">
                       {staff.email || '—'}
                     </td>
-                    <td className="px-4 py-4 whitespace-nowrap">
+                    <td className="px-5 py-4 whitespace-nowrap">
                       {staff.is_active ? (
-                        <span className="flex items-center gap-1 text-[11px] font-semibold text-emerald-400">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-400 bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-800/60">
+                          <CheckCircle2 className="w-3 h-3" />
                           Active
                         </span>
                       ) : (
-                        <span className="flex items-center gap-1 text-[11px] font-semibold text-rose-400">
-                          <XCircle className="w-3.5 h-3.5" />
+                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-rose-400 bg-rose-950/60 px-2 py-0.5 rounded-full border border-rose-800/60">
+                          <XCircle className="w-3 h-3" />
                           Deactivated
                         </span>
                       )}
                     </td>
-                    <td className="px-4 py-4 text-right whitespace-nowrap">
+                    <td className="px-5 py-4 text-right">
                       {hasPermission('staff:deactivate') && staff.is_active && staff.staff_id !== currentStaff.staff_id && (
                         <button
                           onClick={() => setDeactivatingStaff(staff)}
-                          className="px-2.5 py-1 rounded-lg bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-800 text-xs font-semibold transition-colors"
+                          className="px-2.5 py-1 rounded-lg bg-rose-950/40 hover:bg-rose-900 text-rose-300 hover:text-white border border-rose-800/50 text-[11px] font-semibold transition-colors cursor-pointer"
                         >
                           Deactivate
                         </button>
@@ -267,93 +300,97 @@ export const StaffManagementView = () => {
         )}
       </div>
 
-      {/* Add Staff Modal */}
+      {/* Add Staff Account Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2 text-cyan-400 font-bold text-sm">
-                <UserPlus className="w-5 h-5" />
-                <span>Provision New Staff Member</span>
+              <div className="flex items-center gap-2">
+                <UserPlus className="w-5 h-5 text-cyan-400" />
+                <h3 className="text-base font-bold text-white">Create Staff Account</h3>
               </div>
               <button
                 onClick={() => setShowAddModal(false)}
-                className="text-slate-400 hover:text-white"
+                className="text-slate-400 hover:text-white cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <form onSubmit={handleCreateStaff} className="space-y-3.5 text-xs">
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">Official Staff ID *</label>
+              <div className="space-y-1">
+                <label className="block text-slate-300 font-bold uppercase tracking-wider text-[10px]">
+                  Unique Staff ID (e.g. DOC005, NUR008) *
+                </label>
                 <input
                   type="text"
                   required
-                  placeholder="e.g. DOC005, NUR008"
+                  placeholder="e.g. DOC005"
                   value={newStaff.staff_id}
-                  onChange={(e) => setNewStaff({ ...newStaff, staff_id: e.target.value.trim() })}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 font-mono text-white focus:outline-none focus:border-cyan-500"
+                  onChange={(e) => setNewStaff({ ...newStaff, staff_id: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 font-mono focus:outline-none focus:border-cyan-500 uppercase"
                 />
               </div>
 
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">Full Legal Name *</label>
+              <div className="space-y-1">
+                <label className="block text-slate-300 font-bold uppercase tracking-wider text-[10px]">
+                  Full Clinician Name *
+                </label>
                 <input
                   type="text"
                   required
                   placeholder="e.g. Dr. Robert Chase, MD"
                   value={newStaff.name}
                   onChange={(e) => setNewStaff({ ...newStaff, name: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
                 />
               </div>
 
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">Hospital Email</label>
+              <div className="space-y-1">
+                <label className="block text-slate-300 font-bold uppercase tracking-wider text-[10px]">
+                  Staff Email Address
+                </label>
                 <input
                   type="email"
-                  placeholder="e.g. r.chase@hospital.org"
+                  placeholder="e.g. chase@hospital.org"
                   value={newStaff.email}
-                  onChange={(e) => setNewStaff({ ...newStaff, email: e.target.value.trim() })}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
+                  onChange={(e) => setNewStaff({ ...newStaff, email: e.target.value })}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
                 />
               </div>
 
-              <div>
-                <label className="block text-slate-300 font-semibold mb-1">Assigned Clinical Role *</label>
+              <div className="space-y-1">
+                <label className="block text-slate-300 font-bold uppercase tracking-wider text-[10px]">
+                  Clinical Role &amp; Permission Tier *
+                </label>
                 <select
                   value={newStaff.role}
                   onChange={(e) => setNewStaff({ ...newStaff, role: e.target.value })}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-lg p-2 text-white focus:outline-none focus:border-cyan-500"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 font-semibold focus:outline-none focus:border-cyan-500 cursor-pointer"
                 >
                   <option value="EMERGENCY_PHYSICIAN">Emergency Physician</option>
                   <option value="TRIAGE_NURSE">Triage Nurse</option>
-                  <option value="STAFF_NURSE">Staff Nurse</option>
-                  <option value="EMERGENCY_TECHNICIAN">Emergency Technician</option>
                   <option value="CLINICAL_DIRECTOR">Clinical Director</option>
                   <option value="HOSPITAL_ADMIN">Hospital Administrator</option>
+                  <option value="STAFF_NURSE">Staff Nurse</option>
+                  <option value="EMERGENCY_TECHNICIAN">Emergency Technician</option>
                 </select>
               </div>
 
-              <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-[11px] text-slate-400">
-                <span>Hospital Tenant: <strong>{currentStaff.hospital_id}</strong> (Auto-enforced)</span>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3">
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-800">
                 <button
                   type="button"
                   onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white"
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={submittingAdd}
-                  className="px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow disabled:opacity-50"
+                  className="px-5 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold shadow-md shadow-cyan-900/30 transition-all disabled:opacity-50 cursor-pointer"
                 >
-                  {submittingAdd ? 'Provisioning...' : 'Provision Staff Account'}
+                  {submittingAdd ? 'Provisioning...' : 'Provision Account'}
                 </button>
               </div>
             </form>
@@ -363,23 +400,28 @@ export const StaffManagementView = () => {
 
       {/* Deactivate Confirmation Modal */}
       {deactivatingStaff && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-slate-900 border border-rose-600/70 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4">
-            <div className="flex items-center gap-2 text-rose-400 font-bold text-sm">
-              <AlertTriangle className="w-5 h-5" />
-              <span>Confirm Staff Account Deactivation</span>
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3 text-rose-400">
+              <div className="p-2.5 rounded-2xl bg-rose-950 border border-rose-800">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-white">Deactivate Staff Account</h3>
+                <p className="text-xs text-slate-400">Confirm access revocation</p>
+              </div>
             </div>
 
             <p className="text-xs text-slate-300 leading-relaxed">
               Are you sure you want to deactivate <strong className="text-white">{deactivatingStaff.name}</strong> ({deactivatingStaff.staff_id})? 
-              This will immediately revoke active sessions and prevent access to the clinical system.
+              This staff member will immediately lose access to patient triage charts and clinical decision consoles.
             </p>
 
-            <div className="flex items-center justify-end gap-2 pt-2">
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-800">
               <button
                 type="button"
                 onClick={() => setDeactivatingStaff(null)}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white"
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
               >
                 Cancel
               </button>
@@ -387,15 +429,14 @@ export const StaffManagementView = () => {
                 type="button"
                 onClick={handleDeactivate}
                 disabled={submittingDeactivate}
-                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow disabled:opacity-50"
+                className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md shadow-rose-950/50 transition-all disabled:opacity-50 cursor-pointer"
               >
-                {submittingDeactivate ? 'Deactivating...' : 'Deactivate Staff Account'}
+                {submittingDeactivate ? 'Deactivating...' : 'Confirm Deactivation'}
               </button>
             </div>
           </div>
         </div>
       )}
-
     </div>
   );
 };

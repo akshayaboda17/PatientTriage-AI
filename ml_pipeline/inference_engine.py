@@ -106,9 +106,13 @@ class TriageRiskInferenceEngine:
         risk_score = round(prob_positive * 100.0, 2)
 
         # 5. Acuity & Category Mapping
-        if risk_score >= 75.0:
+        spo2_val = current_obs.get("spo2") if current_obs.get("spo2") is not None else 98
+        gcs_val = current_obs.get("gcs") if current_obs.get("gcs") is not None else 15
+        pain_val = current_obs.get("pain_score") if current_obs.get("pain_score") is not None else 0
+
+        if risk_score >= 80.0:
             risk_category = "CRITICAL"
-            predicted_esi = 1 if current_obs.get("spo2", 98) < 90 or current_obs.get("gcs", 15) < 13 else 2
+            predicted_esi = 1 if spo2_val < 90 or gcs_val < 13 else 2
         elif risk_score >= 50.0:
             risk_category = "HIGH"
             predicted_esi = 2
@@ -117,7 +121,7 @@ class TriageRiskInferenceEngine:
             predicted_esi = 3
         else:
             risk_category = "LOW"
-            predicted_esi = 4 if current_obs.get("pain_score", 0) > 4 else 5
+            predicted_esi = 4 if pain_val > 4 else 5
 
         # Confidence: distance from decision threshold 0.50
         confidence = round(max(prob_positive, 1.0 - prob_positive) * 100.0, 2)

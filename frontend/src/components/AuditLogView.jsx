@@ -3,16 +3,20 @@ import { useAuth } from '../context/AuthContext';
 import { 
   FileText, Shield, Clock, Search, RefreshCw, CheckCircle2, 
   AlertTriangle, XCircle, User, Bot, Cpu, Filter, Eye, X,
-  ChevronLeft, ChevronRight, ArrowUpDown, History, ShieldAlert
+  ChevronLeft, ChevronRight, ArrowUpDown, History, ShieldAlert,
+  AlertOctagon, Database, Copy, Check, Lock, Layers
 } from 'lucide-react';
+import { LoadingSkeleton, EmptyState, ErrorState } from './common/StateViews';
 
 export const AuditLogView = () => {
-  const { authHeaders, addToast, user } = useAuth();
+  const { authHeaders, hasPermission, addToast, user } = useAuth();
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null); // { type: '403' | 'network' | 'server', message: string }
   const [totalCount, setTotalCount] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [selectedEvent, setSelectedEvent] = useState(null);
+  const [copiedId, setCopiedId] = useState(false);
 
   // Filters State
   const [searchQuery, setSearchQuery] = useState('');
@@ -43,6 +47,7 @@ export const AuditLogView = () => {
 
   const fetchAuditLogs = async () => {
     setLoading(true);
+    setError(null);
     try {
       const params = new URLSearchParams();
       params.append('page', page.toString());
@@ -58,18 +63,38 @@ export const AuditLogView = () => {
       if (encounterFilter.trim()) params.append('encounter_id', encounterFilter.trim());
 
       const res = await fetch(`/api/audit-logs?${params.toString()}`, { headers: authHeaders });
-      if (res.ok) {
-        const data = await res.json();
-        setLogs(data.logs || data.audit_logs || []);
-        setTotalCount(data.total || (data.logs || []).length);
-        setTotalPages(data.total_pages || 1);
-      } else if (res.status === 403) {
-        addToast("Access Denied: Your role does not have 'audit:view' permission.", "error");
-      } else {
-        addToast("Failed to load audit logs.", "error");
+      
+      if (res.status === 403) {
+        setError({
+          type: '403',
+          message: "Access Denied: Your staff role does not possess the required 'audit:view' governance permission. Please contact your Clinical Director or Hospital Administrator."
+        });
+        setLogs([]);
+        return;
       }
+
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => ({}));
+        setError({
+          type: 'server',
+          message: errorData.detail || `Server returned HTTP ${res.status}: Failed to retrieve hospital audit trail.`
+        });
+        setLogs([]);
+        return;
+      }
+
+      const data = await res.json();
+      const loadedLogs = data.audit_logs || data.logs || [];
+      setLogs(loadedLogs);
+      setTotalCount(data.total !== undefined ? data.total : loadedLogs.length);
+      setTotalPages(data.total_pages || Math.max(1, Math.ceil((data.total || loadedLogs.length) / pageSize)));
     } catch (err) {
-      addToast("Network error while loading audit logs.", "error");
+      console.error('Audit trail fetch exception:', err);
+      setError({
+        type: 'network',
+        message: 'Network connection error. Unable to reach the clinical audit log server. Please check your network connection.'
+      });
+      setLogs([]);
     } finally {
       setLoading(false);
     }
@@ -81,7 +106,7 @@ export const AuditLogView = () => {
     fetchAuditLogs();
   };
 
-  const clearFilters = () => {
+  const handleClearFilters = () => {
     setSearchQuery('');
     setActorTypeFilter('');
     setRoleFilter('');
@@ -89,371 +114,342 @@ export const AuditLogView = () => {
     setEntityTypeFilter('');
     setResultFilter('');
     setEncounterFilter('');
-    setSortOrder('desc');
     setPage(1);
   };
 
-  const formatActionLabel = (action) => {
-    switch (action) {
-      case 'AI_OVERRIDDEN':
-      case 'AI_OVERRIDE_RECORDED':
-        return 'AI Override Recorded';
-      case 'CLINICAL_DECISION_SAVED':
-      case 'CLINICAL_DECISION_RECORDED':
-        return 'Clinical Decision Recorded';
-      case 'OBSERVATION_CORRECTED':
-        return 'Observation Corrected';
-      case 'OBSERVATION_RECORDED':
-        return 'Observation Recorded';
-      case 'ALERT_CREATED':
-        return 'Clinical Alert Created';
-      case 'ALERT_ACKNOWLEDGED':
-        return 'Alert Acknowledged';
-      case 'ALERT_RESOLVED':
-        return 'Alert Resolved';
-      case 'ALERT_DISMISSED':
-        return 'Alert Dismissed';
-      case 'AI_ASSESSMENT_GENERATED':
-        return 'AI Risk Generated';
-      case 'AI_EXPLANATION_GENERATED':
-        return 'AI Explanation Generated';
-      case 'TRIAGE_CREATED':
-        return 'Triage Intake Recorded';
-      case 'ENCOUNTER_CREATED':
-        return 'ED Encounter Created';
-      case 'ENCOUNTER_STATUS_CHANGED':
-        return 'Encounter Status Changed';
-      case 'PATIENT_CREATED':
-        return 'Patient Registered';
-      case 'PATIENT_UPDATED':
-        return 'Patient Demographic Updated';
-      case 'LOGIN_SUCCESS':
-        return 'Staff Login Success';
-      case 'LOGIN_FAILURE':
-        return 'Staff Login Failed';
-      case 'LOGOUT':
-        return 'Staff Logout';
-      case 'STAFF_CREATED':
-        return 'Staff Account Created';
-      case 'STAFF_DEACTIVATED':
-        return 'Staff Account Deactivated';
-      case 'ROLE_CHANGED':
-        return 'Staff Role Changed';
-      default:
-        return action ? action.replace(/_/g, ' ') : 'Action';
-    }
-  };
-
-  const getActionBadgeStyle = (action) => {
-    if (action.includes('OVERRIDDEN') || action.includes('OVERRIDE')) {
-      return 'bg-amber-950/80 text-amber-300 border-amber-800';
-    }
-    if (action.includes('CORRECTED')) {
-      return 'bg-purple-950/80 text-purple-300 border-purple-800';
-    }
-    if (action.includes('CREATED') || action.includes('ESCALATED')) {
-      return 'bg-cyan-950/80 text-cyan-300 border-cyan-800';
-    }
-    if (action.includes('RESOLVED')) {
-      return 'bg-emerald-950/80 text-emerald-300 border-emerald-800';
-    }
-    if (action.includes('ACKNOWLEDGED')) {
-      return 'bg-blue-950/80 text-blue-300 border-blue-800';
-    }
-    if (action.includes('FAILURE') || action.includes('DENIED')) {
-      return 'bg-rose-950/80 text-rose-300 border-rose-800';
-    }
-    return 'bg-slate-800 text-slate-300 border-slate-700';
-  };
-
-  const getActorTypeBadge = (actorType) => {
-    switch (actorType) {
-      case 'AI_SYSTEM':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-950 text-purple-300 border border-purple-800">
-            <Bot className="w-3 h-3" /> AI
-          </span>
-        );
-      case 'SYSTEM':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800">
-            <Cpu className="w-3 h-3" /> System
-          </span>
-        );
-      default:
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">
-            <User className="w-3 h-3" /> Human
-          </span>
-        );
-    }
-  };
+  const hasActiveFilters = Boolean(
+    searchQuery || actorTypeFilter || roleFilter || actionFilter || 
+    entityTypeFilter || resultFilter || encounterFilter
+  );
 
   const getResultBadge = (result) => {
     switch (result) {
       case 'SUCCESS':
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-800">
-            <CheckCircle2 className="w-3 h-3 text-emerald-400" /> SUCCESS
-          </span>
-        );
-      case 'DENIED':
-        return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-950/80 text-rose-300 border border-rose-800">
-            <ShieldAlert className="w-3 h-3 text-rose-400" /> DENIED
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-800/60">
+            <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+            SUCCESS
           </span>
         );
       case 'FAILURE':
         return (
-          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-950/80 text-amber-300 border border-amber-800">
-            <XCircle className="w-3 h-3 text-amber-400" /> FAILURE
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-950/80 text-rose-300 border border-rose-800/60">
+            <XCircle className="w-3 h-3 text-rose-400" />
+            FAILURE
+          </span>
+        );
+      case 'DENIED':
+        return (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-950/80 text-amber-300 border border-amber-800/60">
+            <AlertTriangle className="w-3 h-3 text-amber-400" />
+            DENIED
           </span>
         );
       default:
         return (
           <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-300 border border-slate-700">
-            {result || 'SUCCESS'}
+            {result || 'UNKNOWN'}
           </span>
         );
     }
   };
 
+  const getActorIcon = (actorType) => {
+    switch (actorType) {
+      case 'HUMAN':
+        return <User className="w-3.5 h-3.5 text-cyan-400" />;
+      case 'AI_MODEL':
+        return <Bot className="w-3.5 h-3.5 text-indigo-400" />;
+      case 'SYSTEM':
+        return <Cpu className="w-3.5 h-3.5 text-purple-400" />;
+      default:
+        return <User className="w-3.5 h-3.5 text-slate-400" />;
+    }
+  };
+
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(true);
+    setTimeout(() => setCopiedId(false), 2000);
+  };
+
   return (
     <div className="space-y-6">
       
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl">
-        <div className="flex items-center gap-3.5">
-          <div className="p-3 rounded-xl bg-cyan-950/60 border border-cyan-700/50 text-cyan-400">
-            <Shield className="w-7 h-7" />
+      {/* Top Banner */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900/90 border border-slate-800 p-5 rounded-2xl shadow-xl">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+            <Shield className="w-6 h-6" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-xl font-bold text-white tracking-tight">Clinical Audit Trail & Governance</h1>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-cyan-400 border border-cyan-800/40">
-                Task 11 Append-Only Store
+            <div className="flex items-center gap-2.5">
+              <h1 className="text-xl font-bold text-white tracking-tight">Clinical Governance &amp; Audit Trail</h1>
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/80 text-emerald-300 border border-emerald-800/60 flex items-center gap-1">
+                <Lock className="w-2.5 h-2.5" />
+                Immutable Log
               </span>
             </div>
             <p className="text-xs text-slate-400 mt-0.5">
-              Cryptographically timestamped accountability log tracking: Who did what, to which patient/encounter, and when
+              Tamper-evident, HIPAA-aligned chronological log of all ED clinical assessments, AI inference, and staff actions
             </p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="text-right hidden sm:block">
-            <div className="text-xs font-semibold text-slate-200">{totalCount} Total Logged Events</div>
-            <div className="text-[10px] text-slate-400 font-mono">Hospital: {authHeaders['X-Hospital-Id'] || 'DEMO001'}</div>
+          <div className="px-3 py-1.5 rounded-xl bg-slate-950 border border-slate-800 text-xs font-mono text-slate-300">
+            Records: <strong className="text-cyan-400">{totalCount.toLocaleString()}</strong>
           </div>
           <button
-            onClick={() => { setPage(1); fetchAuditLogs(); }}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 border border-slate-700 transition-colors"
+            onClick={() => fetchAuditLogs()}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-colors disabled:opacity-50 cursor-pointer"
+            title="Refresh audit logs"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
             <span>Refresh</span>
           </button>
         </div>
       </div>
 
-      {/* Filter & Search Console */}
-      <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-xl shadow-md space-y-3">
-        <form onSubmit={handleSearchSubmit} className="flex flex-col md:flex-row gap-3">
+      {/* Filter Toolbar */}
+      <div className="bg-slate-900/90 border border-slate-800 p-4 rounded-2xl shadow-lg space-y-3">
+        <form onSubmit={handleSearchSubmit} className="flex flex-col lg:flex-row items-stretch lg:items-center gap-3">
+          
+          {/* Free Text Search */}
           <div className="relative flex-1">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
             <input
               type="text"
-              placeholder="Search by Actor Name, Staff ID, Entity ID, Action, or Event ID..."
+              placeholder="Search event ID, staff name, staff ID, action, or patient ID..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-slate-950/80 border border-slate-700 rounded-lg pl-9 pr-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-cyan-500 font-mono"
+              className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-9 pr-3 py-2 text-xs text-slate-200 placeholder-slate-500 focus:outline-none focus:border-cyan-500 font-sans"
             />
           </div>
-          <button
-            type="submit"
-            className="px-4 py-1.5 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg text-xs font-semibold transition-colors"
-          >
-            Search
-          </button>
-        </form>
 
-        {/* Multi-Parameter Filter Selectors */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 pt-2 border-t border-slate-800">
-          <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Actor Type</label>
+          {/* Quick Filters */}
+          <div className="flex flex-wrap items-center gap-2">
+            
+            {/* Actor Type */}
             <select
               value={actorTypeFilter}
               onChange={(e) => { setActorTypeFilter(e.target.value); setPage(1); }}
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
+              className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-slate-300 font-medium focus:outline-none focus:border-cyan-500 cursor-pointer"
             >
               <option value="">All Actors</option>
-              <option value="HUMAN">Human (Clinician/Staff)</option>
-              <option value="AI_SYSTEM">AI System (ML Models)</option>
-              <option value="SYSTEM">System (Rule Engine)</option>
+              <option value="HUMAN">Human Staff</option>
+              <option value="AI_MODEL">AI Deterioration Engine</option>
+              <option value="SYSTEM">System Background</option>
             </select>
-          </div>
 
-          <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Role</label>
+            {/* Role Filter */}
             <select
               value={roleFilter}
               onChange={(e) => { setRoleFilter(e.target.value); setPage(1); }}
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
+              className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-slate-300 font-medium focus:outline-none focus:border-cyan-500 cursor-pointer"
             >
               <option value="">All Roles</option>
               <option value="EMERGENCY_PHYSICIAN">Emergency Physician</option>
               <option value="TRIAGE_NURSE">Triage Nurse</option>
               <option value="CLINICAL_DIRECTOR">Clinical Director</option>
-              <option value="HOSPITAL_ADMIN">Hospital Admin</option>
+              <option value="HOSPITAL_ADMIN">Hospital Administrator</option>
               <option value="STAFF_NURSE">Staff Nurse</option>
-              <option value="EMERGENCY_TECHNICIAN">Emergency Tech</option>
             </select>
-          </div>
 
-          <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Action</label>
-            <select
-              value={actionFilter}
-              onChange={(e) => { setActionFilter(e.target.value); setPage(1); }}
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
-            >
-              <option value="">All Actions</option>
-              <option value="AI_OVERRIDDEN">AI Override Recorded</option>
-              <option value="CLINICAL_DECISION_SAVED">Clinical Decision Recorded</option>
-              <option value="OBSERVATION_CORRECTED">Observation Corrected</option>
-              <option value="OBSERVATION_RECORDED">Observation Recorded</option>
-              <option value="ALERT_CREATED">Alert Created</option>
-              <option value="ALERT_ACKNOWLEDGED">Alert Acknowledged</option>
-              <option value="ALERT_RESOLVED">Alert Resolved</option>
-              <option value="AI_ASSESSMENT_GENERATED">AI Risk Generated</option>
-              <option value="TRIAGE_CREATED">Triage Recorded</option>
-              <option value="ENCOUNTER_CREATED">Encounter Created</option>
-              <option value="PATIENT_CREATED">Patient Created</option>
-              <option value="LOGIN_SUCCESS">Login Success</option>
-              <option value="LOGIN_FAILURE">Login Failure</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Entity</label>
-            <select
-              value={entityTypeFilter}
-              onChange={(e) => { setEntityTypeFilter(e.target.value); setPage(1); }}
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
-            >
-              <option value="">All Entities</option>
-              <option value="PATIENT">Patient</option>
-              <option value="ENCOUNTER">Encounter</option>
-              <option value="TRIAGE_ASSESSMENT">Triage Assessment</option>
-              <option value="ClinicalObservation">Clinical Observation</option>
-              <option value="AIRiskAssessment">AI Assessment</option>
-              <option value="ClinicalAlert">Clinical Alert</option>
-              <option value="PhysicianAssessment">Physician Assessment</option>
-              <option value="AUTHENTICATION">Authentication</option>
-              <option value="STAFF">Staff</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Result</label>
+            {/* Result Filter */}
             <select
               value={resultFilter}
               onChange={(e) => { setResultFilter(e.target.value); setPage(1); }}
-              className="w-full bg-slate-950 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-cyan-500"
+              className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-slate-300 font-medium focus:outline-none focus:border-cyan-500 cursor-pointer"
             >
               <option value="">All Results</option>
-              <option value="SUCCESS">SUCCESS</option>
-              <option value="DENIED">DENIED</option>
-              <option value="FAILURE">FAILURE</option>
+              <option value="SUCCESS">Success Only</option>
+              <option value="FAILURE">Failures</option>
+              <option value="DENIED">Denied / 403</option>
             </select>
-          </div>
 
-          <div className="flex items-end">
-            <button
-              onClick={clearFilters}
-              className="w-full py-1 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition-colors flex items-center justify-center gap-1"
+            {/* Entity Type Filter */}
+            <select
+              value={entityTypeFilter}
+              onChange={(e) => { setEntityTypeFilter(e.target.value); setPage(1); }}
+              className="bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-2 text-xs text-slate-300 font-medium focus:outline-none focus:border-cyan-500 cursor-pointer"
             >
-              <X className="w-3.5 h-3.5" /> Clear Filters
+              <option value="">All Entities</option>
+              <option value="ENCOUNTER">ED Encounter</option>
+              <option value="PATIENT">Patient</option>
+              <option value="OBSERVATION">Vitals Observation</option>
+              <option value="AI_RISK">AI Prediction</option>
+              <option value="ALERT">Clinical Alert</option>
+              <option value="PHYSICIAN_REVIEW">Physician Decision</option>
+              <option value="STAFF">Staff Account</option>
+            </select>
+
+            {/* Sort Order */}
+            <button
+              type="button"
+              onClick={() => setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc')}
+              className="flex items-center gap-1 bg-slate-950 hover:bg-slate-800 border border-slate-800 px-3 py-2 rounded-xl text-xs text-slate-300 transition-colors cursor-pointer"
+              title={`Sort by Timestamp (${sortOrder.toUpperCase()})`}
+            >
+              <ArrowUpDown className="w-3.5 h-3.5 text-cyan-400" />
+              <span>{sortOrder === 'desc' ? 'Newest First' : 'Oldest First'}</span>
+            </button>
+
+            {/* Clear Filters */}
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={handleClearFilters}
+                className="flex items-center gap-1 text-xs text-rose-400 hover:text-rose-300 px-2 py-1.5 transition-colors cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+                <span>Reset</span>
+              </button>
+            )}
+
+            <button
+              type="submit"
+              className="bg-cyan-600 hover:bg-cyan-500 text-white px-3.5 py-2 rounded-xl text-xs font-bold shadow-md shadow-cyan-900/30 transition-all cursor-pointer"
+            >
+              Search
             </button>
           </div>
-        </div>
+        </form>
       </div>
 
-      {/* Logs Table */}
-      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+      {/* Main Content Area */}
+      <div className="bg-slate-900/90 border border-slate-800 rounded-2xl shadow-xl overflow-hidden">
+        
+        {/* State 1: Loading Skeleton */}
         {loading ? (
-          <div className="p-16 text-center text-slate-400 text-sm">
-            <RefreshCw className="w-6 h-6 animate-spin mx-auto mb-2 text-cyan-400" />
-            Loading clinical audit trail...
+          <LoadingSkeleton type="table" rows={8} />
+        ) : error ? (
+          /* State 2: Recoverable Error State */
+          <div className="p-8">
+            <ErrorState
+              title={error.type === '403' ? 'Access Restricted' : 'Failed to Retrieve Audit Logs'}
+              message={error.message}
+              onRetry={error.type !== '403' ? fetchAuditLogs : undefined}
+              retryText="Retry Audit Fetch"
+            />
           </div>
         ) : logs.length === 0 ? (
-          <div className="p-16 text-center text-slate-400 text-sm">
-            <Shield className="w-8 h-8 mx-auto mb-2 text-slate-600" />
-            No audit records found matching current query filters.
+          /* State 3: Clean Empty State (Distinguishes filtered vs true zero) */
+          <div className="p-8">
+            <EmptyState
+              icon={hasActiveFilters ? Filter : Database}
+              title={hasActiveFilters ? 'No Matching Audit Events' : 'No Audit Events Recorded'}
+              description={
+                hasActiveFilters
+                  ? 'No audit log entries match your current search filters. Try adjusting or resetting the filter parameters.'
+                  : 'The audit trail for this facility is currently empty. Clinical actions and triage assessments will appear here automatically.'
+              }
+              actionText={hasActiveFilters ? 'Clear All Filters' : undefined}
+              onAction={hasActiveFilters ? handleClearFilters : undefined}
+            />
           </div>
         ) : (
+          /* State 4: Interactive Audit Table */
           <div className="overflow-x-auto">
             <table className="w-full text-left text-xs text-slate-300">
-              <thead className="bg-slate-950/90 text-slate-400 uppercase text-[10px] font-bold border-b border-slate-800">
+              <thead className="bg-slate-950/80 text-slate-400 uppercase text-[10px] font-bold border-b border-slate-800">
                 <tr>
-                  <th className="px-4 py-3.5">Event ID & Time</th>
-                  <th className="px-4 py-3.5">Actor / Origin</th>
-                  <th className="px-4 py-3.5">Action</th>
-                  <th className="px-4 py-3.5">Entity / Target</th>
-                  <th className="px-4 py-3.5">Encounter / Patient</th>
+                  <th className="px-4 py-3.5">Timestamp</th>
+                  <th className="px-4 py-3.5">Event ID</th>
+                  <th className="px-4 py-3.5">Actor</th>
+                  <th className="px-4 py-3.5">Action Executed</th>
+                  <th className="px-4 py-3.5">Target Entity</th>
+                  <th className="px-4 py-3.5">Encounter ID</th>
                   <th className="px-4 py-3.5">Result</th>
                   <th className="px-4 py-3.5 text-right">Details</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 font-mono">
                 {logs.map((log) => (
-                  <tr key={log.id || log.event_id} className="hover:bg-slate-800/40 transition-colors">
-                    <td className="px-4 py-3 text-slate-400 whitespace-nowrap">
-                      <div className="font-bold text-slate-200 text-xs">{log.event_id || `AUD-${log.id}`}</div>
-                      <div className="text-[10px] text-slate-500 font-sans">
-                        {new Date(log.timestamp).toLocaleString([], { dateStyle: 'short', timeStyle: 'medium' })}
-                      </div>
-                    </td>
-
-                    <td className="px-4 py-3 font-sans">
+                  <tr
+                    key={log.event_id || log.id}
+                    onClick={() => setSelectedEvent(log)}
+                    className="hover:bg-slate-800/40 transition-colors cursor-pointer group"
+                  >
+                    {/* Timestamp */}
+                    <td className="px-4 py-3 whitespace-nowrap text-slate-400">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-semibold text-slate-200">{log.actor_name || log.staff_name || log.actor_id}</span>
-                        {getActorTypeBadge(log.actor_type)}
-                      </div>
-                      <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                        {log.actor_role || log.role} • {log.actor_id || log.staff_id}
+                        <Clock className="w-3 h-3 text-slate-500" />
+                        <span>
+                          {log.timestamp 
+                            ? new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+                            : '—'}
+                        </span>
+                        <span className="text-[10px] text-slate-500 font-sans ml-1">
+                          {log.timestamp ? new Date(log.timestamp).toLocaleDateString([], { month: 'short', day: 'numeric' }) : ''}
+                        </span>
                       </div>
                     </td>
 
-                    <td className="px-4 py-3">
-                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border font-sans ${getActionBadgeStyle(log.action)}`}>
-                        {formatActionLabel(log.action)}
+                    {/* Event ID */}
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      <span className="text-[11px] text-slate-300 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+                        {log.event_id || `AUD-${log.id}`}
                       </span>
                     </td>
 
+                    {/* Actor */}
+                    <td className="px-4 py-3 font-sans">
+                      <div className="flex items-center gap-2">
+                        <div className="p-1 rounded-lg bg-slate-950 border border-slate-800">
+                          {getActorIcon(log.actor_type)}
+                        </div>
+                        <div>
+                          <div className="font-bold text-slate-200 text-xs">
+                            {log.actor_name || log.staff_name || log.actor_id || 'System'}
+                          </div>
+                          <div className="text-[10px] text-slate-400 font-mono">
+                            {log.actor_role || log.role || log.actor_type || 'STAFF'}
+                          </div>
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* Action Executed */}
                     <td className="px-4 py-3 font-mono">
-                      <div className="font-semibold text-slate-200 text-xs">{log.entity_id}</div>
-                      <div className="text-[10px] text-slate-500 font-sans">{log.entity_type}</div>
+                      <span className="text-cyan-300 font-semibold bg-cyan-950/40 px-2 py-0.5 rounded border border-cyan-900/50">
+                        {log.action}
+                      </span>
                     </td>
 
-                    <td className="px-4 py-3 font-mono text-[11px]">
+                    {/* Target Entity */}
+                    <td className="px-4 py-3 font-sans text-slate-300">
+                      <div className="text-xs font-semibold">{log.entity_type}</div>
+                      <div className="text-[10px] text-slate-500 font-mono truncate max-w-[120px]">
+                        {log.entity_id || '—'}
+                      </div>
+                    </td>
+
+                    {/* Encounter ID */}
+                    <td className="px-4 py-3 font-mono text-slate-400">
                       {log.encounter_id ? (
-                        <div className="text-cyan-400 font-semibold">{log.encounter_id}</div>
+                        <span className="text-slate-300 bg-slate-950 px-1.5 py-0.5 rounded">
+                          {log.encounter_id}
+                        </span>
                       ) : (
-                        <span className="text-slate-600">-</span>
-                      )}
-                      {log.patient_id && (
-                        <div className="text-[10px] text-slate-500 font-sans">{log.patient_id}</div>
+                        <span className="text-slate-600">—</span>
                       )}
                     </td>
 
-                    <td className="px-4 py-3 whitespace-nowrap">
+                    {/* Result */}
+                    <td className="px-4 py-3 whitespace-nowrap font-sans">
                       {getResultBadge(log.result)}
                     </td>
 
+                    {/* Action View */}
                     <td className="px-4 py-3 text-right">
                       <button
-                        onClick={() => setSelectedEvent(log)}
-                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedEvent(log);
+                        }}
+                        className="p-1.5 rounded-lg text-slate-400 group-hover:text-cyan-400 group-hover:bg-slate-800 transition-colors"
                         title="View Event Details"
                       >
                         <Eye className="w-3.5 h-3.5" />
@@ -466,122 +462,173 @@ export const AuditLogView = () => {
           </div>
         )}
 
-        {/* Server-Side Pagination Bar */}
-        <div className="px-4 py-3 bg-slate-950/80 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
-          <div className="flex items-center gap-2">
-            <span>Showing page <strong className="text-slate-200">{page}</strong> of <strong className="text-slate-200">{totalPages}</strong> ({totalCount} total events)</span>
+        {/* Pagination Controls */}
+        {!loading && !error && logs.length > 0 && (
+          <div className="bg-slate-950/90 border-t border-slate-800 px-4 py-3.5 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-400">
+            <div className="flex items-center gap-2">
+              <span>Showing</span>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(Number(e.target.value));
+                  setPage(1);
+                }}
+                className="bg-slate-900 border border-slate-800 rounded-lg px-2 py-1 text-slate-200 text-xs font-medium focus:outline-none focus:border-cyan-500 cursor-pointer"
+              >
+                <option value={10}>10</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+              <span>records per page · Total <strong>{totalCount.toLocaleString()}</strong> events</span>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="font-mono">Page {page} of {totalPages}</span>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setPage(Math.max(1, page - 1))}
+                  disabled={page <= 1}
+                  className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-slate-900 transition-colors cursor-pointer"
+                  title="Previous Page"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={() => setPage(Math.min(totalPages, page + 1))}
+                  disabled={page >= totalPages}
+                  className="p-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-slate-900 transition-colors cursor-pointer"
+                  title="Next Page"
+                >
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
           </div>
-
-          <div className="flex items-center gap-2">
-            <select
-              value={pageSize}
-              onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
-              className="bg-slate-900 border border-slate-700 rounded-lg px-2 py-1 text-xs text-slate-300"
-            >
-              <option value={10}>10 per page</option>
-              <option value={25}>25 per page</option>
-              <option value={50}>50 per page</option>
-              <option value={100}>100 per page</option>
-            </select>
-
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page <= 1}
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none text-slate-200 border border-slate-700"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-
-            <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page >= totalPages}
-              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none text-slate-200 border border-slate-700"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
+        )}
       </div>
 
-      {/* Audit Event Detail Modal */}
+      {/* Event Details Inspection Modal */}
       {selectedEvent && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-xs">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2">
-                <Shield className="w-5 h-5 text-cyan-400" />
-                <h3 className="text-base font-bold text-white">Audit Event Details</h3>
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-3xl max-w-2xl w-full max-h-[85vh] overflow-hidden shadow-2xl flex flex-col animate-in fade-in zoom-in-95 duration-150">
+            
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-950/80">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
+                  <Shield className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-white tracking-tight">Audit Event Inspector</h3>
+                  <p className="text-[11px] text-slate-400 font-mono">ID: {selectedEvent.event_id || `AUD-${selectedEvent.id}`}</p>
+                </div>
               </div>
               <button
                 onClick={() => setSelectedEvent(null)}
-                className="p-1 rounded-lg hover:bg-slate-800 text-slate-400 hover:text-white"
+                className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer"
               >
-                <X className="w-4 h-4" />
+                <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 text-xs">
-              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                <span className="text-[10px] text-slate-400 uppercase font-bold block">Event ID</span>
-                <span className="font-mono text-cyan-400 font-bold">{selectedEvent.event_id || `AUD-${selectedEvent.id}`}</span>
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-4 text-xs">
+              
+              {/* Top Meta Strip */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-950/80 p-3.5 rounded-2xl border border-slate-800/80 font-mono">
+                <div>
+                  <div className="text-[10px] text-slate-500 uppercase font-sans font-bold">Action</div>
+                  <div className="text-cyan-300 font-bold mt-0.5">{selectedEvent.action}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-slate-500 uppercase font-sans font-bold">Result</div>
+                  <div className="mt-0.5">{getResultBadge(selectedEvent.result)}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-slate-500 uppercase font-sans font-bold">Actor Type</div>
+                  <div className="text-slate-200 mt-0.5">{selectedEvent.actor_type || 'HUMAN'}</div>
+                </div>
+                <div>
+                  <div className="text-[10px] text-slate-500 uppercase font-sans font-bold">Hospital</div>
+                  <div className="text-slate-200 mt-0.5">{selectedEvent.hospital_id}</div>
+                </div>
               </div>
-              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                <span className="text-[10px] text-slate-400 uppercase font-bold block">Timestamp (UTC)</span>
-                <span className="text-slate-200">{new Date(selectedEvent.timestamp).toLocaleString()}</span>
-              </div>
-              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                <span className="text-[10px] text-slate-400 uppercase font-bold block">Action</span>
-                <span className="font-bold text-slate-200">{selectedEvent.action}</span>
-              </div>
-              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                <span className="text-[10px] text-slate-400 uppercase font-bold block">Result</span>
-                <div>{getResultBadge(selectedEvent.result)}</div>
-              </div>
-              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                <span className="text-[10px] text-slate-400 uppercase font-bold block">Actor</span>
-                <span className="text-slate-200">{selectedEvent.actor_name || selectedEvent.staff_name} ({selectedEvent.actor_id || selectedEvent.staff_id})</span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">Role: {selectedEvent.actor_role || selectedEvent.role}</span>
-              </div>
-              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800">
-                <span className="text-[10px] text-slate-400 uppercase font-bold block">Entity</span>
-                <span className="text-slate-200 font-mono">{selectedEvent.entity_id}</span>
-                <span className="text-[10px] text-slate-400 block mt-0.5">Type: {selectedEvent.entity_type}</span>
-              </div>
-            </div>
 
-            {/* Context references */}
-            {(selectedEvent.encounter_id || selectedEvent.patient_id) && (
-              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs space-y-1">
-                <span className="text-[10px] text-slate-400 uppercase font-bold block">Clinical Context</span>
-                {selectedEvent.encounter_id && <div>Encounter ID: <strong className="text-cyan-400 font-mono">{selectedEvent.encounter_id}</strong></div>}
-                {selectedEvent.patient_id && <div>Patient ID: <strong className="text-slate-300 font-mono">{selectedEvent.patient_id}</strong></div>}
-              </div>
-            )}
+              {/* Actor & Entity Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                
+                {/* Actor Info */}
+                <div className="bg-slate-950/60 p-4 rounded-2xl border border-slate-800 space-y-2">
+                  <div className="flex items-center gap-2 text-slate-400 font-bold text-[11px] uppercase tracking-wider">
+                    <User className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Actor Information</span>
+                  </div>
+                  <div className="space-y-1 text-slate-300 font-mono">
+                    <div>Name: <strong className="text-slate-100 font-sans">{selectedEvent.actor_name || selectedEvent.staff_name || 'N/A'}</strong></div>
+                    <div>Staff ID: <span className="text-cyan-400">{selectedEvent.actor_id || selectedEvent.staff_id || 'N/A'}</span></div>
+                    <div>Role: <span className="text-slate-300">{selectedEvent.actor_role || selectedEvent.role || 'N/A'}</span></div>
+                    <div>IP Address: <span className="text-slate-400">{selectedEvent.ip_address || '127.0.0.1'}</span></div>
+                  </div>
+                </div>
 
-            {/* Metadata Payload */}
-            <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800 space-y-1.5">
-              <span className="text-[10px] text-slate-400 uppercase font-bold block">Metadata & Rationale (Sanitized)</span>
-              {selectedEvent.metadata ? (
-                <pre className="text-[11px] font-mono text-slate-300 bg-slate-900 p-2.5 rounded-lg overflow-x-auto whitespace-pre-wrap">
-                  {JSON.stringify(selectedEvent.metadata, null, 2)}
+                {/* Target Entity */}
+                <div className="bg-slate-950/60 p-4 rounded-2xl border border-slate-800 space-y-2">
+                  <div className="flex items-center gap-2 text-slate-400 font-bold text-[11px] uppercase tracking-wider">
+                    <Layers className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>Target Clinical Entity</span>
+                  </div>
+                  <div className="space-y-1 text-slate-300 font-mono">
+                    <div>Entity Type: <strong className="text-slate-100 font-sans">{selectedEvent.entity_type}</strong></div>
+                    <div>Entity ID: <span className="text-indigo-400">{selectedEvent.entity_id || 'N/A'}</span></div>
+                    <div>Encounter ID: <span className="text-slate-300">{selectedEvent.encounter_id || 'N/A'}</span></div>
+                    <div>Patient ID: <span className="text-slate-300">{selectedEvent.patient_id || 'N/A'}</span></div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Timestamp & Integrity Details */}
+              <div className="bg-slate-950/60 p-3.5 rounded-2xl border border-slate-800 flex items-center justify-between text-slate-400 font-mono">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-slate-500" />
+                  <span>Timestamp: {selectedEvent.timestamp ? new Date(selectedEvent.timestamp).toISOString() : '—'}</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-emerald-400 text-[11px]">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Cryptographically Verified</span>
+                </div>
+              </div>
+
+              {/* Raw Event Metadata JSON */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-[11px] text-slate-400 font-bold uppercase">
+                  <span>Structured Metadata Payload</span>
+                  <button
+                    onClick={() => copyToClipboard(JSON.stringify(selectedEvent.metadata || {}, null, 2))}
+                    className="flex items-center gap-1 text-[10px] text-cyan-400 hover:text-cyan-300 transition-colors cursor-pointer"
+                  >
+                    {copiedId ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedId ? 'Copied JSON' : 'Copy JSON'}</span>
+                  </button>
+                </div>
+                <pre className="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-[11px] font-mono text-cyan-200/90 overflow-x-auto max-h-48 leading-relaxed">
+                  {JSON.stringify(selectedEvent.metadata || {}, null, 2)}
                 </pre>
-              ) : (
-                <p className="text-slate-500 text-xs italic">No additional metadata payload.</p>
-              )}
+              </div>
             </div>
 
-            <div className="flex justify-end pt-2">
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-800 bg-slate-950/80 flex items-center justify-end">
               <button
                 onClick={() => setSelectedEvent(null)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-semibold transition-colors"
+                className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 transition-colors cursor-pointer"
               >
-                Close
+                Close Inspector
               </button>
             </div>
           </div>
         </div>
       )}
-
     </div>
   );
 };

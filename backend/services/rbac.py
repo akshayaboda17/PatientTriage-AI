@@ -18,13 +18,14 @@ ROLE_PERMISSIONS: dict[StaffRoleEnum, Set[str]] = {
         "audit:view", "patient:view", "clinical_decision:view", "dashboard:view"
     },
     StaffRoleEnum.CLINICAL_DIRECTOR: {
-        "hospital:view", "staff:view", "audit:view",
+        "hospital:view", "hospital:update", "staff:view", "audit:view",
         "patient:view", "patient:create", "patient:update",
         "triage:view", "triage:create", "triage:update",
         "vitals:view", "vitals:create", "vitals:update",
         "ai:view", "ai:override",
         "alert:view", "alert:acknowledge", "alert:resolve", "alert:dismiss",
         "clinical_decision:create", "clinical_decision:view", "clinical_assessment:create", "clinical_assessment:update",
+        "clinical_review:review",
         "dashboard:view"
     },
     StaffRoleEnum.EMERGENCY_PHYSICIAN: {
@@ -35,6 +36,7 @@ ROLE_PERMISSIONS: dict[StaffRoleEnum, Set[str]] = {
         "alert:view", "alert:acknowledge", "alert:resolve", "alert:dismiss",
         "audit:view",
         "clinical_decision:create", "clinical_decision:view", "clinical_assessment:create", "clinical_assessment:update",
+        "clinical_review:review",
         "dashboard:view"
     },
     StaffRoleEnum.TRIAGE_NURSE: {
@@ -178,6 +180,11 @@ def get_current_staff(
             sess = ACTIVE_SESSIONS[raw_token]
             staff_id = sess["staff_id"]
             hospital_id = sess["hospital_id"]
+        elif raw_token.startswith("PT_SES_"):
+            parts = raw_token.split("_")
+            if len(parts) >= 4:
+                staff_id = parts[2]
+                hospital_id = parts[3]
         elif raw_token.startswith("TOKEN_"):
             remainder = raw_token[6:]
             token_staff = db.query(Staff).filter(Staff.staff_id == remainder).first()
@@ -192,7 +199,6 @@ def get_current_staff(
             staff_id = raw_token
 
     if not staff_id and x_staff_id:
-        # Check header-based token revocation if logged out
         if x_staff_id in REVOKED_TOKENS:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
