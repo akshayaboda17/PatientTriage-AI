@@ -247,6 +247,7 @@ export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertSt
           onClose={() => setShowUpdateConditionModal(false)}
           encounter={encounter}
           patient={patient}
+          latestObservation={observations && observations.length > 0 ? observations[observations.length - 1] : null}
           currentTriageLevel={triage?.triage_level}
           onConditionUpdated={() => {
             fetchDetails();

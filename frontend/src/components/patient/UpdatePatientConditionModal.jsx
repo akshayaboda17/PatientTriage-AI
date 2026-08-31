@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { 
   Activity, Sparkles, X, CheckCircle2, AlertTriangle, Shield, 
@@ -11,6 +11,7 @@ export const UpdatePatientConditionModal = ({
   onClose, 
   encounter, 
   patient, 
+  latestObservation,
   currentTriageLevel, 
   onConditionUpdated 
 }) => {
@@ -25,13 +26,33 @@ export const UpdatePatientConditionModal = ({
     temp: '',
     pain_score: '',
     gcs: '',
-    updated_complaint: encounter?.chief_complaint || '',
-    bed_number: encounter?.bed_number || '',
+    updated_complaint: '',
+    bed_number: '',
     notes: ''
   });
 
   const [submitting, setSubmitting] = useState(false);
   const [assessmentResult, setAssessmentResult] = useState(null);
+
+  // Pre-fill with the patient's existing/current data whenever modal opens
+  useEffect(() => {
+    if (isOpen && encounter) {
+      setFormData({
+        hr: latestObservation?.hr != null ? String(latestObservation.hr) : '',
+        sbp: latestObservation?.sbp != null ? String(latestObservation.sbp) : '',
+        dbp: latestObservation?.dbp != null ? String(latestObservation.dbp) : '',
+        rr: latestObservation?.rr != null ? String(latestObservation.rr) : '',
+        spo2: latestObservation?.spo2 != null ? String(latestObservation.spo2) : '',
+        temp: latestObservation?.temp != null ? String(latestObservation.temp) : '',
+        pain_score: latestObservation?.pain_score != null ? String(latestObservation.pain_score) : '',
+        gcs: latestObservation?.gcs != null ? String(latestObservation.gcs) : '',
+        updated_complaint: encounter.chief_complaint || '',
+        bed_number: encounter.bed_number || '',
+        notes: ''
+      });
+      setAssessmentResult(null);
+    }
+  }, [isOpen, latestObservation, encounter]);
 
   if (!isOpen || !encounter) return null;
 
@@ -45,7 +66,7 @@ export const UpdatePatientConditionModal = ({
     try {
       const encounterId = encounter.encounter_id;
 
-      // 1. Record New Longitudinal Vital Signs if any vital was entered
+      // 1. Record New Longitudinal Vital Signs
       const hasVitals = formData.hr || formData.sbp || formData.dbp || formData.rr || formData.spo2 || formData.temp || formData.pain_score || formData.gcs;
 
       if (hasVitals) {
@@ -102,7 +123,7 @@ export const UpdatePatientConditionModal = ({
       const newMeta = getPriorityMeta(newLevel);
 
       // 3. Update Encounter Triage with newly assessed priority
-      const triageRes = await fetch(`/api/encounters/${encounterId}/triage`, {
+      await fetch(`/api/encounters/${encounterId}/triage`, {
         method: 'POST',
         headers: { ...authHeaders, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -170,7 +191,7 @@ export const UpdatePatientConditionModal = ({
               <p className="text-[11px] text-slate-400">
                 {assessmentResult 
                   ? 'ML model reassessed risk trajectory and updated care priority'
-                  : 'Enter new bedside measurements to re-evaluate patient care priority level'}
+                  : 'Review current values, adjust parameters, and re-evaluate patient care priority level'}
               </p>
             </div>
           </div>
@@ -200,14 +221,14 @@ export const UpdatePatientConditionModal = ({
               </span>
             </div>
 
-            {/* Section 1: Updated Bedside Vitals */}
+            {/* Section 1: Updated Bedside Vitals (Pre-populated with current values) */}
             <div className="bg-slate-950/80 p-4 rounded-2xl border border-slate-800 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider">
-                  1. Updated Bedside Vital Signs
+                  1. Bedside Vital Signs
                 </span>
                 <span className="text-[10px] text-slate-500">
-                  Leave blank if not re-measured
+                  Pre-filled with latest reading. Modify as needed.
                 </span>
               </div>
 
@@ -302,10 +323,10 @@ export const UpdatePatientConditionModal = ({
 
               <div className="space-y-3">
                 <div className="space-y-1">
-                  <label className="block text-slate-400 font-bold">Updated Clinical Symptoms / Presentation</label>
+                  <label className="block text-slate-400 font-bold">Clinical Symptoms / Presentation</label>
                   <textarea
                     rows={2}
-                    placeholder="Describe changes in symptoms or clinical status..."
+                    placeholder="Describe symptoms or changes in clinical status..."
                     value={formData.updated_complaint}
                     onChange={(e) => setFormData({ ...formData, updated_complaint: e.target.value })}
                     className="w-full bg-slate-900 border border-slate-800 rounded-xl p-2 text-slate-200 focus:outline-none focus:border-cyan-500"
@@ -325,7 +346,7 @@ export const UpdatePatientConditionModal = ({
                   </div>
 
                   <div className="space-y-1">
-                    <label className="block text-slate-400 font-bold">Clinical Progress Note</label>
+                    <label className="block text-slate-400 font-bold">Clinical Progress Note (Optional)</label>
                     <input
                       type="text"
                       placeholder="e.g. Patient resting comfortably"
