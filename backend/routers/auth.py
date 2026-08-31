@@ -5,7 +5,10 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from models import Hospital, Staff, StaffRoleEnum, ActorTypeEnum, AuditResultEnum
-from schemas.auth_schemas import LoginRequest, RegisterHospitalRequest
+from schemas.auth_schemas import (
+    LoginRequest, RegisterHospitalRequest, 
+    VerifyHospitalRequest, RegisterHospitalOnlyRequest, RegisterStaffRequest
+)
 from services.audit_service import AuditService
 from services.rbac import (
     get_db, get_current_staff,
@@ -32,6 +35,154 @@ def reset_login_rate_limit(key: str) -> None:
     if key in LOGIN_FAILED_ATTEMPTS:
         del LOGIN_FAILED_ATTEMPTS[key]
 
+@router.post("/api/auth/verify-hospital")
+def verify_hospital(req: VerifyHospitalRequest, db: Session = Depends(get_db)):
+    """
+    Verifies that a hospital facility exists and is active.
+    Validates facility access credentials.
+    """
+    hosp_code = req.hospital_code.strip().upper()
+    hospital = db.query(Hospital).filter(Hospital.hospital_code == hosp_code).first()
+
+    if not hospital or not hospital.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Hospital facility with ID '{hosp_code}' not found or inactive."
+        )
+
+    # Get staff roster count for this hospital
+    staff_count = db.query(Staff).filter(Staff.hospital_id == hosp_code, Staff.is_active == True).count()
+
+    return {
+        "status": "success",
+        "hospital": hospital.to_dict(),
+        "staff_count": staff_count,
+        "message": f"Hospital '{hospital.name}' verified successfully."
+    }
+
+@router.post("/api/auth/register-hospital-facility")
+def register_hospital_facility(req: RegisterHospitalOnlyRequest, db: Session = Depends(get_db)):
+    """
+    Registers a new hospital facility.
+    """
+    hosp_code = req.hospital_code.strip().upper()
+    existing_hosp = db.query(Hospital).filter(Hospital.hospital_code == hosp_code).first()
+    if existing_hosp:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Hospital ID '{hosp_code}' already exists. Please choose a unique hospital ID."
+        )
+
+    new_hospital = Hospital(
+        hospital_code=hosp_code,
+        name=req.hospital_name.strip(),
+        address=req.address.strip() if req.address else None,
+        is_active=True
+    )
+    db.add(new_hospital)
+    db.commit()
+    db.refresh(new_hospital)
+
+    AuditService.log_event(
+        db=db,
+        hospital_id=hosp_code,
+        action="HOSPITAL_FACILITY_CREATED",
+        entity_type="HOSPITAL",
+        entity_id=hosp_code,
+        actor_id="REGISTRATION_PORTAL",
+        actor_name="Hospital Administrator",
+        actor_type=ActorTypeEnum.HUMAN,
+        result=AuditResultEnum.SUCCESS,
+        metadata={"hospital_name": new_hospital.name},
+        auto_commit=True
+    )
+
+    return {
+        "status": "success",
+        "hospital": new_hospital.to_dict(),
+        "message": f"Hospital facility '{new_hospital.name}' created successfully."
+    }
+
+@router.post("/api/auth/register-staff")
+def register_staff_member(req: RegisterStaffRequest, db: Session = Depends(get_db)):
+    """
+    Signs up a new clinical staff member under the specified hospital facility.
+    Automatically adds them to the hospital staff roster and immediately authenticates them.
+    """
+    hosp_code = req.hospital_id.strip().upper()
+    hospital = db.query(Hospital).filter(Hospital.hospital_code == hosp_code).first()
+    if not hospital:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Hospital facility '{hosp_code}' not found."
+        )
+
+    staff_id = req.staff_id.strip()
+    existing_staff = db.query(Staff).filter(Staff.staff_id == staff_id).first()
+    if existing_staff:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Staff ID '{staff_id}' is already registered. Please choose a unique staff ID."
+        )
+
+    # Check email uniqueness within hospital
+    email = req.email.strip().lower()
+    existing_email = db.query(Staff).filter(Staff.hospital_id == hosp_code, Staff.email == email).first()
+    if existing_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"A staff member with email '{email}' is already registered in this facility."
+        )
+
+    # Resolve role
+    assigned_role = StaffRoleEnum.EMERGENCY_PHYSICIAN
+    if req.role and req.role.upper() in [r.value for r in StaffRoleEnum]:
+        assigned_role = StaffRoleEnum(req.role.upper())
+
+    pw_hash = hash_password(req.password)
+
+    new_staff = Staff(
+        hospital_id=hosp_code,
+        staff_id=staff_id,
+        name=req.name.strip(),
+        email=email,
+        role=assigned_role,
+        password_hash=pw_hash,
+        is_active=True
+    )
+    db.add(new_staff)
+    db.commit()
+    db.refresh(new_staff)
+
+    # Audit Staff Registration
+    AuditService.log_event(
+        db=db,
+        hospital_id=hosp_code,
+        action="STAFF_REGISTERED",
+        entity_type="STAFF",
+        entity_id=staff_id,
+        actor_id=staff_id,
+        actor_name=new_staff.name,
+        actor_role=assigned_role.value,
+        actor_type=ActorTypeEnum.HUMAN,
+        result=AuditResultEnum.SUCCESS,
+        metadata={"email": new_staff.email, "role": assigned_role.value},
+        auto_commit=True
+    )
+
+    # Create session token and generate permissions
+    token = create_session(new_staff.staff_id, new_staff.hospital_id)
+    permissions = list(get_staff_permissions(new_staff.role))
+
+    return {
+        "access_token": token,
+        "token_type": "bearer",
+        "staff": new_staff.to_dict(),
+        "hospital": hospital.to_dict(),
+        "permissions": permissions,
+        "message": f"Welcome {new_staff.name}! Your staff account has been created and activated."
+    }
+
 @router.post("/api/auth/login")
 def login(creds: LoginRequest, raw_req: Request, db: Session = Depends(get_db)):
     """
@@ -47,9 +198,9 @@ def login(creds: LoginRequest, raw_req: Request, db: Session = Depends(get_db)):
             detail="Too many failed login attempts. Rate limit exceeded. Please wait 60 seconds."
         )
 
-    query = db.query(Staff).filter(Staff.staff_id == creds.staff_id)
+    query = db.query(Staff).filter((Staff.staff_id == creds.staff_id) | (Staff.email == creds.staff_id.lower()))
     if creds.hospital_id:
-        query = query.filter(Staff.hospital_id == creds.hospital_id)
+        query = query.filter(Staff.hospital_id == creds.hospital_id.upper())
     staff = query.first()
 
     if not staff or not verify_password(creds.password, staff.password_hash):
@@ -171,9 +322,7 @@ def list_hospitals(db: Session = Depends(get_db)):
 def register_new_hospital(req: RegisterHospitalRequest, db: Session = Depends(get_db)):
     """
     Provisions a new hospital facility/tenant and creates the initial administrative/clinical user.
-    Enables new users to start with a 100% clean, unpopulated clinical workspace.
     """
-    # 1. Check if hospital code already exists
     hosp_code = req.hospital_code.strip().upper()
     existing_hosp = db.query(Hospital).filter(Hospital.hospital_code == hosp_code).first()
     if existing_hosp:
@@ -182,7 +331,6 @@ def register_new_hospital(req: RegisterHospitalRequest, db: Session = Depends(ge
             detail=f"Hospital code '{hosp_code}' already exists. Please choose a unique code."
         )
 
-    # 2. Check if staff ID already exists
     staff_id = req.admin_staff_id.strip()
     existing_staff = db.query(Staff).filter(Staff.staff_id == staff_id).first()
     if existing_staff:
@@ -191,7 +339,6 @@ def register_new_hospital(req: RegisterHospitalRequest, db: Session = Depends(ge
             detail=f"Staff ID '{staff_id}' already exists. Please choose a unique staff ID."
         )
 
-    # 3. Create Hospital
     new_hospital = Hospital(
         hospital_code=hosp_code,
         name=req.hospital_name.strip(),
@@ -202,13 +349,10 @@ def register_new_hospital(req: RegisterHospitalRequest, db: Session = Depends(ge
     db.commit()
     db.refresh(new_hospital)
 
-    # 4. Resolve initial role
     assigned_role = StaffRoleEnum.CLINICAL_DIRECTOR
     if req.role and req.role.upper() in [r.value for r in StaffRoleEnum]:
         assigned_role = StaffRoleEnum(req.role.upper())
 
-    # 5. Create Staff Account
-    from services.rbac import hash_password
     pw_hash = hash_password(req.password)
 
     new_staff = Staff(
@@ -224,7 +368,6 @@ def register_new_hospital(req: RegisterHospitalRequest, db: Session = Depends(ge
     db.commit()
     db.refresh(new_staff)
 
-    # 6. Audit Event
     AuditService.log_event(
         db=db,
         hospital_id=hosp_code,
@@ -240,7 +383,6 @@ def register_new_hospital(req: RegisterHospitalRequest, db: Session = Depends(ge
         auto_commit=True
     )
 
-    # 7. Create Session
     token = create_session(new_staff.staff_id, new_staff.hospital_id)
     permissions = list(get_staff_permissions(new_staff.role))
 

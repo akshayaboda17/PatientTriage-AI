@@ -20,6 +20,10 @@ export const AuthProvider = ({ children }) => {
     const saved = localStorage.getItem('pt_hospital');
     return saved ? JSON.parse(saved) : null;
   });
+  const [selectedHospitalFacility, setSelectedHospitalFacility] = useState(() => {
+    const saved = localStorage.getItem('pt_selected_hospital_facility');
+    return saved ? JSON.parse(saved) : null;
+  });
   const [permissions, setPermissions] = useState(() => {
     const saved = localStorage.getItem('pt_permissions');
     return saved ? JSON.parse(saved) : [];
@@ -44,6 +48,129 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (err) {
       console.error('Failed to load hospitals:', err);
+    }
+  };
+
+  // ── Stage 1: Hospital Facility Verification & Registration ──
+
+  const verifyHospitalFacility = async (hospitalCode, password = '') => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/verify-hospital', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hospital_code: hospitalCode.trim().toUpperCase(),
+          password: password.trim() || undefined
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Hospital verification failed. Please check the Hospital ID.');
+      }
+
+      const data = await res.json();
+      const facility = data.hospital;
+      setSelectedHospitalFacility(facility);
+      localStorage.setItem('pt_selected_hospital_facility', JSON.stringify(facility));
+      addToast(`Hospital "${facility.name}" verified. Please sign in or sign up as staff.`, 'success');
+      return { success: true, hospital: facility };
+    } catch (err) {
+      addToast(err.message, 'error');
+      return { success: false, error: err.message };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const registerHospitalFacility = async (facilityData) => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/register-hospital-facility', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hospital_name: facilityData.hospital_name.trim(),
+          hospital_code: facilityData.hospital_code.trim().toUpperCase(),
+          password: facilityData.password?.trim() || undefined,
+          address: facilityData.address?.trim() || undefined,
+          bed_capacity: parseInt(facilityData.bed_capacity) || 25
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Failed to register hospital facility.');
+      }
+
+      const data = await res.json();
+      const facility = data.hospital;
+      setSelectedHospitalFacility(facility);
+      localStorage.setItem('pt_selected_hospital_facility', JSON.stringify(facility));
+      fetchHospitals();
+      addToast(`Hospital "${facility.name}" registered successfully! Please proceed to create your staff account.`, 'success');
+      return { success: true, hospital: facility };
+    } catch (err) {
+      addToast(err.message, 'error');
+      return { success: false, error: err.message };
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const clearSelectedHospital = () => {
+    setSelectedHospitalFacility(null);
+    localStorage.removeItem('pt_selected_hospital_facility');
+  };
+
+  // ── Stage 2: Staff Sign Up & Staff Login ──
+
+  const registerStaff = async (staffData) => {
+    setLoading(true);
+    try {
+      const res = await fetch('/api/auth/register-staff', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          hospital_id: staffData.hospital_id.trim().toUpperCase(),
+          name: staffData.name.trim(),
+          staff_id: staffData.staff_id.trim(),
+          email: staffData.email.trim(),
+          role: staffData.role || 'EMERGENCY_PHYSICIAN',
+          specialization: staffData.specialization?.trim() || undefined,
+          password: staffData.password
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || 'Staff sign up failed.');
+      }
+
+      const data = await res.json();
+      const accessToken = data.access_token;
+      const staffUser = data.staff;
+      const staffHospital = data.hospital;
+      const userPermissions = data.permissions || [];
+
+      setToken(accessToken);
+      setUser(staffUser);
+      setHospital(staffHospital);
+      setPermissions(userPermissions);
+
+      localStorage.setItem('pt_access_token', accessToken);
+      localStorage.setItem('pt_user', JSON.stringify(staffUser));
+      localStorage.setItem('pt_hospital', JSON.stringify(staffHospital));
+      localStorage.setItem('pt_permissions', JSON.stringify(userPermissions));
+
+      addToast(`Staff account created for ${staffUser.name}! Automatically added to hospital staff roster.`, 'success');
+      return { success: true };
+    } catch (err) {
+      addToast(err.message, 'error');
+      return { success: false, error: err.message };
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -122,7 +249,7 @@ export const AuthProvider = ({ children }) => {
       localStorage.setItem('pt_permissions', JSON.stringify(userPermissions));
 
       fetchHospitals();
-      addToast(`Hospital "${staffHospital?.name}" registered successfully with a clean workspace! Welcome, ${staffUser.name}!`, 'success');
+      addToast(`Hospital "${staffHospital?.name}" registered successfully! Welcome, ${staffUser.name}!`, 'success');
       return { success: true };
     } catch (err) {
       addToast(err.message, 'error');
@@ -180,7 +307,6 @@ export const AuthProvider = ({ children }) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   };
 
-  // Backward compatibility object for components expecting currentStaff
   const currentStaff = user || {
     staff_id: 'GUEST',
     name: 'Guest User',
@@ -201,6 +327,12 @@ export const AuthProvider = ({ children }) => {
         user,
         currentStaff,
         hospital,
+        selectedHospitalFacility,
+        setSelectedHospitalFacility,
+        verifyHospitalFacility,
+        registerHospitalFacility,
+        clearSelectedHospital,
+        registerStaff,
         permissions,
         hospitals,
         isAuthenticated,
