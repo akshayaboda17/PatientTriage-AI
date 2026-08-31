@@ -180,7 +180,7 @@ export const PatientDetailView = ({ encounterId, onBack, onOpenReview, onAlertSt
         <div className="lg:col-span-2 space-y-6">
           <VitalsProgressionTable
             observations={observations}
-            onSelectObsForCorrection={(obs) => setSelectedObsForCorrection(obs)}
+            onOpenUpdateModal={() => setShowUpdateConditionModal(true)}
           />
 
           <ClinicalTimeline timeline={timeline} />

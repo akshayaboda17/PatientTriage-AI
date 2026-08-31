@@ -68,8 +68,15 @@ export const UpdatePatientConditionModal = ({
         });
 
         if (!vitalsRes.ok) {
-          const err = await vitalsRes.json();
-          throw new Error(err.detail || "Failed to record updated vital signs.");
+          let errMsg = "Failed to record updated vital signs.";
+          try {
+            const err = await vitalsRes.json();
+            errMsg = err.detail || errMsg;
+          } catch (e) {
+            const text = await vitalsRes.text().catch(() => "");
+            errMsg = text || errMsg;
+          }
+          throw new Error(errMsg);
         }
       }
 
@@ -83,15 +90,19 @@ export const UpdatePatientConditionModal = ({
       let newLevel = previousLevel;
 
       if (aiRes.ok) {
-        const aiData = await aiRes.json();
-        aiAssessment = aiData.assessment;
-        newLevel = aiAssessment.predicted_triage_level || previousLevel;
+        try {
+          const aiData = await aiRes.json();
+          aiAssessment = aiData.assessment;
+          newLevel = aiAssessment.predicted_triage_level || previousLevel;
+        } catch (e) {
+          console.warn('AI assessment parse warning:', e);
+        }
       }
 
       const newMeta = getPriorityMeta(newLevel);
 
       // 3. Update Encounter Triage with newly assessed priority
-      await fetch(`/api/encounters/${encounterId}/triage`, {
+      const triageRes = await fetch(`/api/encounters/${encounterId}/triage`, {
         method: 'POST',
         headers: { ...authHeaders, 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -109,7 +120,7 @@ export const UpdatePatientConditionModal = ({
           method: 'PUT',
           headers: { ...authHeaders, 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            status: encounter.status,
+            status: encounter.status || 'WAITING',
             bed_number: formData.bed_number.trim()
           })
         });
