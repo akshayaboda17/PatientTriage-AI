@@ -82,9 +82,31 @@ def record_vital_signs(
         ClinicalObservation.encounter_id == encounter_id
     ).order_by(ClinicalObservation.timestamp.asc()).all()
 
+    patient_dict = {
+        "patient_id": enc.patient_id,
+        "age": enc.patient.age if enc.patient else 45.0,
+        "gender": enc.patient.gender if enc.patient else "Other",
+        "medical_history": getattr(enc.patient, "medical_history", None),
+        "allergies": getattr(enc.patient, "allergies", None)
+    } if enc.patient else None
+
+    latest_triage = enc.triage_assessments[-1] if hasattr(enc, "triage_assessments") and enc.triage_assessments else None
+    current_level = latest_triage.triage_level if latest_triage else 3
+
+    encounter_dict = {
+        "encounter_id": enc.encounter_id,
+        "patient_id": enc.patient_id,
+        "arrival_time": enc.arrival_time.isoformat() if enc.arrival_time else None,
+        "arrival_mode": enc.arrival_mode,
+        "chief_complaint": enc.chief_complaint,
+        "initial_triage_level": current_level
+    }
+
     detection_result = deterioration_detector.evaluate_longitudinal_trend(
         observations=all_obs,
-        patient_age=enc.patient.age if enc.patient else None
+        patient_age=enc.patient.age if enc.patient else None,
+        patient_data=patient_dict,
+        encounter_data=encounter_dict
     )
 
     alert_created = False

@@ -39,6 +39,17 @@ class AlertService:
         rule_version = detection_result.get("rule_version", "1.0")
         summary = detection_result.get("summary", "Potential deterioration detected")
         evidence = detection_result.get("signals", [])
+        
+        # Enrich evidence with ML trajectory comparison if available
+        ml_eval = detection_result.get("ml_evaluation")
+        if ml_eval and isinstance(ml_eval, dict):
+            ml_expl = ml_eval.get("explanation", {})
+            if "vitals_comparison" in ml_expl:
+                evidence = evidence + [{"type": "vitals_trajectory", "data": ml_expl["vitals_comparison"]}]
+
+        detection_source = DetectionSourceEnum.ML_BASED if "ML" in rule_id else (
+            DetectionSourceEnum.COMBINED if ml_eval else DetectionSourceEnum.RULE_BASED
+        )
 
         # Check for active (UNACKNOWLEDGED or ACKNOWLEDGED) alert for this encounter
         active_alert = db.query(ClinicalAlert).filter(
@@ -96,7 +107,7 @@ class AlertService:
             severity=severity,
             status=AlertStatusEnum.UNACKNOWLEDGED,
             detected_at=datetime.datetime.utcnow(),
-            detection_source=DetectionSourceEnum.RULE_BASED,
+            detection_source=detection_source,
             detection_rule_id=rule_id,
             detection_version=rule_version,
             summary=summary,

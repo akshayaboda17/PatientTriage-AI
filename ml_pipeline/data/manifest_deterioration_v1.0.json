@@ -1,0 +1,25 @@
+{
+  "dataset_name": "PatientTriage Longitudinal Clinical Trajectory Dataset",
+  "dataset_version": "1.0",
+  "generation_timestamp": "2026-09-01T17:02:11.627119",
+  "total_slices": 15749,
+  "feature_count": 53,
+  "target_column": "composite_critical_outcome_24h",
+  "splits": {
+    "train": {
+      "unique_patients": 3150,
+      "total_slices": 10999,
+      "positive_prevalence": 0.4131284662242022
+    },
+    "val": {
+      "unique_patients": 675,
+      "total_slices": 2362,
+      "positive_prevalence": 0.3793395427603726
+    },
+    "test": {
+      "unique_patients": 675,
+      "total_slices": 2388,
+      "positive_prevalence": 0.4321608040201005
+    }
+  }
+}
