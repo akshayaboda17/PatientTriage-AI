@@ -15,7 +15,8 @@ ROLE_PERMISSIONS: dict[StaffRoleEnum, Set[str]] = {
     StaffRoleEnum.HOSPITAL_ADMIN: {
         "hospital:view", "hospital:update",
         "staff:view", "staff:create", "staff:update", "staff:deactivate",
-        "audit:view", "patient:view", "clinical_decision:view", "dashboard:view"
+        "audit:view", "patient:view", "clinical_decision:view", "dashboard:view",
+        "alert:view"
     },
     StaffRoleEnum.CLINICAL_DIRECTOR: {
         "hospital:view", "hospital:update", "staff:view", "audit:view",

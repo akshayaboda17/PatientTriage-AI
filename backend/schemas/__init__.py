@@ -3,7 +3,10 @@ from schemas.vital_schemas import VitalSignInput, ObservationCorrectionRequest
 from schemas.alert_schemas import AlertResolutionInput, AlertDismissalInput
 from schemas.physician_schemas import ClinicalDecisionRequest
 from schemas.patient_schemas import PatientCreateRequest, PatientUpdateRequest
-from schemas.encounter_schemas import EncounterCreateRequest, EncounterStatusUpdateRequest
+from schemas.encounter_schemas import (
+    EncounterCreateRequest, EncounterStatusUpdateRequest,
+    DischargeRequest, PriorityOverrideRequest
+)
 from schemas.triage_schemas import TriageCreateRequest
 from schemas.staff_schemas import StaffCreateRequest, StaffRoleUpdateRequest
 from schemas.ai_schemas import AIAssessmentOutputSchema, LegacyPatientInput, LegacyOverrideInput
@@ -19,6 +22,8 @@ __all__ = [
     "PatientUpdateRequest",
     "EncounterCreateRequest",
     "EncounterStatusUpdateRequest",
+    "DischargeRequest",
+    "PriorityOverrideRequest",
     "TriageCreateRequest",
     "StaffCreateRequest",
     "StaffRoleUpdateRequest",

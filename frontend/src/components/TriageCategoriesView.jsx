@@ -63,79 +63,26 @@ export const TriageCategoriesView = ({ onSelectPatient, onReviewPatient, onOpenR
     }
   };
 
-  // Helper for Doctor & Care Routing recommendation based on presentation & priority
+  // Helper for Care Routing recommendation based on presentation & priority
   const getDoctorCareRouting = (enc) => {
     const level = enc.triage_level || 3;
-    const complaint = (enc.chief_complaint || '').toLowerCase();
-    const isPediatric = enc.age_group === 'PEDIATRIC' || (enc.age && enc.age < 18);
+    const service = enc.recommended_care_service || (level <= 2 ? "Emergency Medicine (Resuscitation)" : "Emergency Medicine");
+    const assignedDoc = enc.assigned_doctor_name || enc.assigned_doctor_id || null;
+    const recommendedDoctor = assignedDoc ? assignedDoc : "Care destination not assigned";
 
-    if (level === 1) {
-      return {
-        specialist_role: "Attending Emergency Physician & Trauma / Resuscitation Team",
-        recommended_doctor: "Dr. Gregory House, MD (Lead Emergency Physician)",
-        zone: "Resuscitation Trauma Bay (RESUS-01 / RESUS-02)",
-        urgency_instruction: "Immediate Bedside Resuscitation (0 min wait)",
-        badge_cls: "bg-rose-950 text-rose-300 border-rose-600 animate-pulse"
-      };
-    } else if (level === 2) {
-      if (complaint.includes('chest') || complaint.includes('heart') || complaint.includes('cardiac')) {
-        return {
-          specialist_role: "Emergency Physician & On-Call Cardiologist",
-          recommended_doctor: "Dr. Allison Cameron, MD (Emergency Cardiology Specialist)",
-          zone: "Acute Monitoring Bed 01 / Chest Pain Rapid Unit",
-          urgency_instruction: "Evaluate within 10-15 minutes, STAT ECG & Cardiac Markers",
-          badge_cls: "bg-amber-950 text-amber-300 border-amber-600"
-        };
-      } else if (complaint.includes('breath') || complaint.includes('dyspnea') || complaint.includes('resp') || complaint.includes('asthma') || complaint.includes('copd')) {
-        return {
-          specialist_role: "Emergency Physician & Respiratory Specialist",
-          recommended_doctor: "Dr. James Wilson, MD (Critical Care & Emergency)",
-          zone: "Acute Bed 03 (High-Flow O₂ Supported)",
-          urgency_instruction: "Evaluate within 10-15 minutes, Continuous Oxygenation Monitoring",
-          badge_cls: "bg-amber-950 text-amber-300 border-amber-600"
-        };
-      } else if (isPediatric) {
-        return {
-          specialist_role: "Pediatric Emergency Specialist",
-          recommended_doctor: "Dr. Robert Chase, MD (Pediatric Emergency Specialist)",
-          zone: "Pediatric Acute Care Bay 01",
-          urgency_instruction: "Immediate age-adjusted assessment & pediatrician review",
-          badge_cls: "bg-pink-950 text-pink-300 border-pink-600"
-        };
-      } else {
-        return {
-          specialist_role: "Senior Emergency Physician",
-          recommended_doctor: "Dr. Gregory House, MD / Dr. Allison Cameron, MD",
-          zone: "Acute Care Bed (BED-01 to BED-05)",
-          urgency_instruction: "Bedside clinician evaluation within 15 minutes",
-          badge_cls: "bg-amber-950 text-amber-300 border-amber-600"
-        };
-      }
-    } else if (level === 3) {
-      return {
-        specialist_role: "Emergency Physician & Primary Care Clinician",
-        recommended_doctor: "Dr. Allison Cameron, MD (Emergency Physician)",
-        zone: "General Acute Emergency Beds (BED-06 to BED-12)",
-        urgency_instruction: "Medical screening & lab diagnostics within 30-45 minutes",
-        badge_cls: "bg-yellow-950 text-yellow-300 border-yellow-600"
-      };
-    } else if (level === 4) {
-      return {
-        specialist_role: "Nurse Practitioner / Clinical Triage Lead",
-        recommended_doctor: "Jackie Peyton, RN (Advanced Practice Nurse)",
-        zone: "Fast Track Observation Bay (FT-01 to FT-04)",
-        urgency_instruction: "Evaluation within 60-90 minutes, focused treatment protocol",
-        badge_cls: "bg-emerald-950 text-emerald-300 border-emerald-600"
-      };
-    } else {
-      return {
-        specialist_role: "Triage Clinical Nurse / Outpatient Coordinator",
-        recommended_doctor: "Triage Nursing Staff",
-        zone: "Ambulatory Clinic / Fast Track Waiting Area",
-        urgency_instruction: "Routine evaluation within 120 minutes or outpatient follow-up",
-        badge_cls: "bg-blue-950 text-blue-300 border-blue-600"
-      };
-    }
+    let zone = "Acute Care Area";
+    if (level === 1) zone = "Resuscitation / Trauma Bay";
+    else if (level === 2) zone = "Acute Emergency Bay";
+    else if (level === 3) zone = "Rapid Assessment & Treatment";
+    else zone = "Ambulatory / Observation Area";
+
+    return {
+      recommended_service: service,
+      specialist_role: service,
+      recommended_doctor: recommendedDoctor,
+      zone: zone,
+      urgency_instruction: level === 1 ? "Immediate Bedside Resuscitation (0 min wait)" : (level === 2 ? "Immediate Bedside Assessment (≤15 min wait)" : "Prompt Evaluation")
+    };
   };
 
   // Group patients into the 5 Urgency tiers using terminology
@@ -339,18 +286,23 @@ export const TriageCategoriesView = ({ onSelectPatient, onReviewPatient, onOpenR
                             <p className="text-slate-200 font-medium leading-snug">{patient.chief_complaint}</p>
                           </div>
 
-                          {/* Doctor Assignment Recommendation Row */}
+                          {/* Care Service Routing Row (Requirement 24) */}
                           <div className="p-2.5 rounded-xl bg-indigo-950/40 border border-indigo-900/60 text-xs space-y-1">
                             <div className="flex items-center gap-1.5 text-indigo-300 font-bold text-[11px]">
                               <Stethoscope className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                              <span>Care Routing &amp; Recommended Doctor:</span>
+                              <span>Recommended Care Service:</span>
                             </div>
                             <div className="text-slate-200 text-[11px]">
-                              <strong>{routing.recommended_doctor}</strong> ({routing.specialist_role})
+                              <strong>{routing.recommended_service}</strong>
                             </div>
-                            <div className="text-slate-400 text-[10px] flex items-center gap-1 font-mono">
-                              <MapPin className="w-2.5 h-2.5 text-slate-500" />
-                              <span>Direct to: {routing.zone}</span>
+                            <div className="text-slate-400 text-[10px] flex items-center justify-between font-mono">
+                              <span className="flex items-center gap-1">
+                                <MapPin className="w-2.5 h-2.5 text-slate-500" />
+                                <span>Zone: {routing.zone}</span>
+                              </span>
+                              <span className="text-slate-400">
+                                {routing.recommended_doctor === 'Care destination not assigned' ? 'Care destination not assigned' : `Assigned: ${routing.recommended_doctor}`}
+                              </span>
                             </div>
                           </div>
 

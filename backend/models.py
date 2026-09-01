@@ -498,34 +498,48 @@ class ClinicalAlert(Base):
     )
 
     def to_dict(self):
+        pat_name = f"{self.patient.first_name} {self.patient.last_name}" if self.patient else None
+        pat_mrn = self.patient.mrn if self.patient else None
+        pat_age = self.patient.age if self.patient else None
+        pat_gender = self.patient.gender if self.patient else None
         return {
             "id": self.id,
             "alert_id": self.alert_id,
             "hospital_id": self.hospital_id,
             "patient_id": self.patient_id,
+            "patient_name": pat_name,
+            "patient_mrn": pat_mrn,
+            "patient_age": pat_age,
+            "patient_gender": pat_gender,
             "encounter_id": self.encounter_id,
             "alert_type": self.alert_type,
             "severity": self.severity.value,
             "status": self.status.value,
             "detected_at": self.detected_at.isoformat() if self.detected_at else None,
             "acknowledged_at": self.acknowledged_at.isoformat() if self.acknowledged_at else None,
+            "acknowledged_by": self.acknowledged_by_name,
             "acknowledged_by_id": self.acknowledged_by_id,
             "acknowledged_by_name": self.acknowledged_by_name,
             "acknowledged_by_role": self.acknowledged_by_role,
             "resolved_at": self.resolved_at.isoformat() if self.resolved_at else None,
+            "resolved_by": self.resolved_by_name,
             "resolved_by_id": self.resolved_by_id,
             "resolved_by_name": self.resolved_by_name,
             "resolved_by_role": self.resolved_by_role,
             "resolution_reason": self.resolution_reason,
+            "resolution_notes": self.resolution_reason,
             "dismissed_at": self.dismissed_at.isoformat() if self.dismissed_at else None,
+            "dismissed_by": self.dismissed_by_name,
             "dismissed_by_id": self.dismissed_by_id,
             "dismissed_by_name": self.dismissed_by_name,
             "dismissed_by_role": self.dismissed_by_role,
             "dismissal_reason": self.dismissal_reason,
+            "dismissal_notes": self.dismissal_reason,
             "detection_source": self.detection_source.value,
             "detection_rule_id": self.detection_rule_id,
             "detection_version": self.detection_version,
             "summary": self.summary,
+            "message": self.summary,
             "evidence": self.evidence,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None

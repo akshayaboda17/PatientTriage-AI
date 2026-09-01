@@ -10,7 +10,10 @@ from models import (
     AlertStatusEnum, PhysicianAssessment, AIAgreementEnum, Staff,
     ActorTypeEnum, AuditResultEnum
 )
-from schemas.encounter_schemas import EncounterCreateRequest, EncounterStatusUpdateRequest
+from schemas.encounter_schemas import (
+    EncounterCreateRequest, EncounterStatusUpdateRequest,
+    DischargeRequest, PriorityOverrideRequest
+)
 from services.audit_service import AuditService
 from services.rbac import get_db, require_permission
 
@@ -27,7 +30,24 @@ def get_ed_encounters(
     Includes current vitals, latest triage, AI risk score, and active alert counts.
     """
     query = db.query(EDEncounter).filter(EDEncounter.hospital_id == staff.hospital_id)
-    if status_filter:
+    if status_filter == "ALL":
+        pass  # Show all encounters
+    elif status_filter == "DISCHARGED":
+        query = query.filter(EDEncounter.status == EncounterStatusEnum.DISCHARGED)
+    elif status_filter in ["COMPLETED", "HISTORICAL"]:
+        query = query.filter(EDEncounter.status.in_([
+            EncounterStatusEnum.DISCHARGED,
+            EncounterStatusEnum.ADMITTED,
+            EncounterStatusEnum.TRANSFERRED
+        ]))
+    elif status_filter == "WAITING":
+        query = query.filter(EDEncounter.status == EncounterStatusEnum.WAITING)
+    elif status_filter == "IN_CARE":
+        query = query.filter(EDEncounter.status.in_([
+            EncounterStatusEnum.IN_TRIAGE,
+            EncounterStatusEnum.IN_TREATMENT
+        ]))
+    elif status_filter:
         query = query.filter(EDEncounter.status == status_filter)
     else:
         # Default to active waiting/in-treatment encounters
@@ -36,6 +56,19 @@ def get_ed_encounters(
             EncounterStatusEnum.IN_TRIAGE,
             EncounterStatusEnum.IN_TREATMENT
         ]))
+
+    from services.hospital_config_service import HospitalConfigService
+    hosp_cfg = HospitalConfigService.get_config(staff.hospital_id)
+    is_surge = hosp_cfg.get("surge_mode_active", False)
+    total_bed_capacity = hosp_cfg.get("bed_capacity", 25)
+
+    # Real-time occupied beds count for accurate waiting state calculation
+    occupied_beds_count = db.query(EDEncounter).filter(
+        EDEncounter.hospital_id == staff.hospital_id,
+        EDEncounter.bed_number.isnot(None),
+        EDEncounter.status.in_([EncounterStatusEnum.WAITING, EncounterStatusEnum.IN_TRIAGE, EncounterStatusEnum.IN_TREATMENT])
+    ).count()
+    available_beds_count = max(0, total_bed_capacity - occupied_beds_count)
 
     encounters = query.order_by(EDEncounter.arrival_time.asc()).all()
     queue_list = []
@@ -144,24 +177,93 @@ def get_ed_encounters(
             is_zero_history=is_zero_history
         )
 
+        # 7. AI Explanation & Override Resolution
+        ai_explanation_dict = latest_ai_risk.explanation.to_dict() if (latest_ai_risk and latest_ai_risk.explanation) else None
+        original_ai_level = latest_ai_risk.predicted_triage_level if latest_ai_risk else None
+
+        is_overridden = False
+        override_info = None
+
+        phys_rev = db.query(PhysicianAssessment).filter(
+            PhysicianAssessment.encounter_id == enc.encounter_id,
+            PhysicianAssessment.ai_agreement == AIAgreementEnum.OVERRIDDEN
+        ).order_by(PhysicianAssessment.created_at.desc()).first()
+
+        has_triage_override_note = bool(latest_triage and "Clinician Override" in (latest_triage.notes or ""))
+        has_ai_level_discrepancy = bool(latest_ai_risk and latest_triage and latest_triage.triage_level != latest_ai_risk.predicted_triage_level)
+
+        if has_ai_level_discrepancy or has_triage_override_note or phys_rev:
+            is_overridden = True
+            override_info = {
+                "original_level": original_ai_level,
+                "clinician_level": latest_triage.triage_level if latest_triage else triage_level,
+                "reason": (phys_rev.override_reason if phys_rev else None) or (latest_triage.notes if "Reason:" in (latest_triage.notes or "") else "Clinician assessment indicates clinical priority adjustment"),
+                "overridden_by": (phys_rev.physician_name if phys_rev else (latest_triage.assessed_by if latest_triage else "Attending Clinician")),
+                "overridden_at": (phys_rev.created_at.isoformat() if phys_rev else (latest_triage.assessed_at.isoformat() if latest_triage else None))
+            }
+
+        # 8. Clinically Appropriate Care Service Destination (without inventing fake doctors)
+        complaint_lower = (enc.chief_complaint or "").lower()
+        is_pediatric = (patient.age is not None and patient.age < 18) or (age_group.value == "PEDIATRIC")
+        if is_pediatric:
+            recommended_service = "Pediatric Emergency"
+        elif any(k in complaint_lower for k in ["chest", "cardiac", "angina", "stemi", "heart", "palpitation"]):
+            recommended_service = "Cardiology"
+        elif any(k in complaint_lower for k in ["breath", "dyspnea", "wheez", "asthma", "copd", "respiratory", "hypox"]):
+            recommended_service = "Pulmonology / Respiratory"
+        elif any(k in complaint_lower for k in ["stroke", "seizure", "syncope", "neuro", "numbness", "weakness"]):
+            recommended_service = "Neurology"
+        elif any(k in complaint_lower for k in ["trauma", "fracture", "fall", "mva", "laceration", "dislocation"]):
+            recommended_service = "Trauma & Orthopedics"
+        elif any(k in complaint_lower for k in ["abdom", "appendix", "guarding", "flank", "vomit", "gi"]):
+            recommended_service = "General Surgery / GI"
+        elif triage_level <= 2:
+            recommended_service = "Emergency Medicine (Resuscitation)"
+        else:
+            recommended_service = "Emergency Medicine"
+
+        # 9. Waiting State Distinction: No Fake Bed & Waiting Space Assessment
+        waiting_for_bed = False
+        if enc.status == EncounterStatusEnum.WAITING and not enc.bed_number:
+            if available_beds_count <= 0 or (triage_level <= 2 and available_beds_count < 2):
+                waiting_for_bed = True
+                waiting_status_text = "WAITING FOR AVAILABLE CARE SPACE"
+            else:
+                waiting_status_text = "WAITING FOR CLINICAL ASSESSMENT"
+        elif enc.status in [EncounterStatusEnum.IN_TREATMENT, EncounterStatusEnum.IN_TRIAGE]:
+            waiting_status_text = "IN CARE"
+        elif enc.status == EncounterStatusEnum.DISCHARGED:
+            waiting_status_text = "DISCHARGED"
+        else:
+            waiting_status_text = enc.status.value
+
         queue_list.append({
             "encounter_id": enc.encounter_id,
             "patient_id": enc.patient_id,
             "patient_name": f"{patient.first_name} {patient.last_name}" if patient else "Unknown",
             "age": patient.age if patient else None,
+            "patient_age": patient.age if patient else None,
             "age_group": age_group.value,
             "gender": patient.gender if patient else None,
+            "patient_gender": patient.gender if patient else None,
             "history_status": history_status.value,
             "arrival_time": enc.arrival_time.isoformat() if enc.arrival_time else None,
             "wait_time_mins": wait_mins,
             "wait_evaluation": wait_eval,
             "status": enc.status.value,
+            "waiting_status_text": waiting_status_text,
+            "waiting_for_bed": waiting_for_bed,
             "bed_number": enc.bed_number,
             "chief_complaint": enc.chief_complaint,
+            "recommended_care_service": recommended_service,
             "triage_level": triage_level,
             "acuity_category": latest_triage.acuity_category if latest_triage else "Urgent",
             "latest_vitals": latest_obs.to_dict() if latest_obs else None,
             "ai_risk": ai_risk_dict,
+            "ai_explanation": ai_explanation_dict,
+            "original_ai_level": original_ai_level,
+            "is_overridden": is_overridden,
+            "override_info": override_info,
             "confidence": confidence_level,
             "safety_status": safety_eval["status"],
             "safety_reasons": safety_eval["reasons"],
@@ -170,11 +272,6 @@ def get_ed_encounters(
             "max_alert_severity": max([a.severity.value for a in active_alerts], default=None) if active_alerts else None,
             "alerts": [a.to_dict() for a in active_alerts]
         })
-
-    # Retrieve surge mode
-    from services.hospital_config_service import HospitalConfigService
-    hosp_cfg = HospitalConfigService.get_config(staff.hospital_id)
-    is_surge = hosp_cfg.get("surge_mode_active", False)
 
     # Sort queue:
     # Under surge mode: Prioritize by (1) Safety ESCALATE/REASSESS, (2) Triage Level, (3) Wait time
@@ -191,7 +288,10 @@ def get_ed_encounters(
         "hospital_id": staff.hospital_id,
         "total": len(sorted_queue),
         "surge_mode": is_surge,
-        "hospital_config": hosp_cfg
+        "hospital_config": hosp_cfg,
+        "available_beds": available_beds_count,
+        "total_beds": total_bed_capacity,
+        "occupied_beds": occupied_beds_count
     }
 
 @router.post("")
@@ -438,3 +538,189 @@ def get_clinical_review(
     Dedicated endpoint for the Physician Clinical Review Workspace, consolidating all clinical inputs.
     """
     return get_encounter_details(encounter_id, staff, db)
+
+@router.post("/{encounter_id}/discharge")
+def discharge_encounter(
+    encounter_id: str,
+    payload: DischargeRequest = DischargeRequest(),
+    staff: Staff = Depends(require_permission("patient:update")),
+    db: Session = Depends(get_db)
+):
+    """
+    Discharges patient from Emergency Department, frees assigned care bed, and logs audit trail.
+    """
+    enc = db.query(EDEncounter).filter(
+        EDEncounter.encounter_id == encounter_id,
+        EDEncounter.hospital_id == staff.hospital_id
+    ).first()
+
+    if not enc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Encounter '{encounter_id}' not found.")
+
+    if enc.status == EncounterStatusEnum.DISCHARGED:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Patient has already been discharged.")
+
+    prev_status = enc.status.value
+    prev_bed = enc.bed_number
+    enc.status = EncounterStatusEnum.DISCHARGED
+    enc.bed_number = None  # Free assigned bed
+
+    # Also resolve active alerts for this encounter
+    active_alerts = db.query(ClinicalAlert).filter(
+        ClinicalAlert.encounter_id == encounter_id,
+        ClinicalAlert.status.in_([AlertStatusEnum.UNACKNOWLEDGED, AlertStatusEnum.ACKNOWLEDGED])
+    ).all()
+    for alt in active_alerts:
+        alt.status = AlertStatusEnum.RESOLVED
+        alt.resolved_at = datetime.datetime.utcnow()
+        alt.resolved_by_id = staff.staff_id
+        alt.resolved_by_name = staff.name
+        alt.resolved_by_role = staff.role.value
+        alt.resolution_reason = f"Discharged from ED to {payload.destination or 'Home'}. {payload.disposition_notes or ''}"
+
+    db.commit()
+    db.refresh(enc)
+
+    pat_name = f"{enc.patient.first_name} {enc.patient.last_name}" if enc.patient else "Patient"
+
+    AuditService.log_event(
+        db=db,
+        hospital_id=staff.hospital_id,
+        action="PATIENT_DISCHARGED",
+        entity_type="ENCOUNTER",
+        entity_id=enc.encounter_id,
+        actor_id=staff.staff_id,
+        actor_name=staff.name,
+        actor_role=staff.role.value,
+        actor_type=ActorTypeEnum.HUMAN,
+        patient_id=enc.patient_id,
+        encounter_id=enc.encounter_id,
+        result=AuditResultEnum.SUCCESS,
+        metadata={
+            "patient_name": pat_name,
+            "previous_status": prev_status,
+            "released_bed": prev_bed,
+            "destination": payload.destination or "Home",
+            "disposition_notes": payload.disposition_notes
+        },
+        auto_commit=True
+    )
+
+    return {
+        "message": f"Patient '{pat_name}' successfully discharged from the Emergency Department.",
+        "encounter": enc.to_dict(),
+        "discharged_at": datetime.datetime.utcnow().isoformat()
+    }
+
+@router.post("/{encounter_id}/override-priority")
+def override_encounter_priority(
+    encounter_id: str,
+    payload: PriorityOverrideRequest,
+    staff: Staff = Depends(require_permission("triage:update")),
+    db: Session = Depends(get_db)
+):
+    """
+    Clinician overrides care priority with preserved AI recommendation, mandatory justification reason, and audit trail.
+    """
+    enc = db.query(EDEncounter).filter(
+        EDEncounter.encounter_id == encounter_id,
+        EDEncounter.hospital_id == staff.hospital_id
+    ).first()
+
+    if not enc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Encounter '{encounter_id}' not found.")
+
+    if not payload.override_reason or not payload.override_reason.strip():
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Override reason is mandatory for clinical priority adjustment.")
+
+    acuity_map = {
+        1: "Immediate",
+        2: "Emergent",
+        3: "Urgent",
+        4: "Less Urgent",
+        5: "Non-Urgent"
+    }
+    acuity_category = acuity_map.get(payload.new_priority, "Urgent")
+
+    # Get latest triage to find previous priority
+    latest_triage = db.query(TriageAssessment).filter(
+        TriageAssessment.encounter_id == enc.encounter_id
+    ).order_by(TriageAssessment.assessed_at.desc()).first()
+    prev_level = latest_triage.triage_level if latest_triage else 3
+
+    # Latest AI risk
+    latest_ai_risk = db.query(AIRiskAssessment).filter(
+        AIRiskAssessment.encounter_id == enc.encounter_id
+    ).order_by(AIRiskAssessment.assessed_at.desc()).first()
+    original_ai_level = latest_ai_risk.predicted_triage_level if latest_ai_risk else prev_level
+
+    # Create new TriageAssessment record preserving history
+    new_triage = TriageAssessment(
+        hospital_id=staff.hospital_id,
+        patient_id=enc.patient_id,
+        encounter_id=enc.encounter_id,
+        triage_level=payload.new_priority,
+        acuity_category=acuity_category,
+        chief_complaint=enc.chief_complaint,
+        assessed_by=staff.name or staff.staff_id,
+        assessed_at=datetime.datetime.utcnow(),
+        notes=f"Clinician Override: Priority changed from Level {prev_level} (AI: Level {original_ai_level}) to Level {payload.new_priority}. Reason: {payload.override_reason.strip()}. {payload.clinical_notes or ''}"
+    )
+    db.add(new_triage)
+
+    # If clinician is a Physician, also record PhysicianAssessment
+    role_str = staff.role.value if hasattr(staff.role, "value") else str(staff.role)
+    if "PHYSICIAN" in role_str or "DIRECTOR" in role_str:
+        phys_assessment = PhysicianAssessment(
+            assessment_id=f"PA-OVR-{enc.encounter_id}-{uuid.uuid4().hex[:4].upper()}",
+            hospital_id=staff.hospital_id,
+            encounter_id=enc.encounter_id,
+            patient_id=enc.patient_id,
+            physician_id=staff.staff_id,
+            physician_name=staff.name,
+            physician_role=role_str,
+            ai_assessment_id=latest_ai_risk.assessment_id if latest_ai_risk else None,
+            ai_risk_category_at_review=latest_ai_risk.risk_category.value if latest_ai_risk else "MODERATE",
+            ai_risk_score_at_review=latest_ai_risk.risk_score if latest_ai_risk else 50.0,
+            clinical_assessment=payload.clinical_notes or f"Priority adjusted to Level {payload.new_priority}",
+            ai_agreement=AIAgreementEnum.OVERRIDDEN,
+            clinician_assigned_risk="CRITICAL" if payload.new_priority <= 2 else ("MODERATE" if payload.new_priority == 3 else "LOW"),
+            override_reason=payload.override_reason.strip(),
+            clinical_notes=payload.clinical_notes,
+            created_at=datetime.datetime.utcnow()
+        )
+        db.add(phys_assessment)
+
+    db.commit()
+    db.refresh(new_triage)
+
+    # Log audit event
+    AuditService.log_event(
+        db=db,
+        hospital_id=staff.hospital_id,
+        action="PRIORITY_OVERRIDDEN",
+        entity_type="TRIAGE_ASSESSMENT",
+        entity_id=str(new_triage.id),
+        actor_id=staff.staff_id,
+        actor_name=staff.name,
+        actor_role=staff.role.value,
+        actor_type=ActorTypeEnum.HUMAN,
+        patient_id=enc.patient_id,
+        encounter_id=enc.encounter_id,
+        result=AuditResultEnum.SUCCESS,
+        metadata={
+            "previous_triage_level": prev_level,
+            "new_triage_level": payload.new_priority,
+            "original_ai_level": original_ai_level,
+            "override_reason": payload.override_reason,
+            "clinical_notes": payload.clinical_notes
+        },
+        auto_commit=True
+    )
+
+    return {
+        "message": f"Care priority successfully adjusted to ESI Level {payload.new_priority}.",
+        "triage": new_triage.to_dict(),
+        "original_ai_level": original_ai_level,
+        "clinician_priority": payload.new_priority
+    }

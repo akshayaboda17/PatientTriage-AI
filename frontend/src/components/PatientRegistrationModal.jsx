@@ -175,7 +175,7 @@ export const PatientRegistrationModal = ({ isOpen, onClose, onPatientRegistered,
           patient_id: patientId,
           chief_complaint: formData.chief_complaint.trim(),
           arrival_mode: formData.arrival_mode || 'Walk-in',
-          bed_number: formData.bed_number.trim() || 'Waiting Area'
+          bed_number: formData.bed_number.trim() || null
         })
       });
 

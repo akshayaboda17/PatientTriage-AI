@@ -11,3 +11,12 @@ class EncounterCreateRequest(BaseModel):
 class EncounterStatusUpdateRequest(BaseModel):
     status: EncounterStatusEnum
     bed_number: Optional[str] = Field(None, max_length=30)
+
+class DischargeRequest(BaseModel):
+    disposition_notes: Optional[str] = Field(None, max_length=1000)
+    destination: Optional[str] = Field("Home", max_length=100) # Home, Nursing Facility, Outpatient Followup, etc.
+
+class PriorityOverrideRequest(BaseModel):
+    new_priority: int = Field(..., ge=1, le=5)
+    override_reason: str = Field(..., min_length=3, max_length=500)
+    clinical_notes: Optional[str] = Field(None, max_length=1000)

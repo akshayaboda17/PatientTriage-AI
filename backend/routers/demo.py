@@ -217,7 +217,7 @@ def seed_demo_data(db: Session = Depends(get_db)):
             "alerts": [],
             "physician_review": {
                 "agreement": AIAgreementEnum.OVERRIDDEN, "assigned_risk": "MODERATE",
-                "decision": ClinicalDecisionEnum.OBSERVE_IN_ED,
+                "decision": ClinicalDecisionEnum.OBSERVATION_UNIT,
                 "reason": "Sinus tachycardia attributed to acute energy drink ingestion. Normal serial ECG and biomarkers.",
                 "notes": "Patient stable. Repeat ECG in 1 hour."
             }
@@ -357,7 +357,7 @@ def seed_demo_data(db: Session = Depends(get_db)):
                 arrival_mode=arc["arrival"],
                 chief_complaint=arc["complaint"],
                 status=EncounterStatusEnum.WAITING,
-                bed_number=f"Bay-{arc['id'][-2:]}"
+                bed_number=None
             )
             db.add(enc)
             db.commit()
@@ -372,8 +372,7 @@ def seed_demo_data(db: Session = Depends(get_db)):
                 chief_complaint=arc["complaint"],
                 pain_score=arc["pain"],
                 mobility="Stretcher" if arc["arrival"] == "Ambulance" else "Ambulatory",
-                assessed_by_id="NUR001",
-                assessed_by_name="Jackie Peyton, RN"
+                assessed_by="NUR001"
             )
             db.add(tr)
             db.commit()
@@ -394,8 +393,7 @@ def seed_demo_data(db: Session = Depends(get_db)):
                     gcs=obs_data.get("gcs", 15),
                     pain_score=arc["pain"],
                     timestamp=obs_time,
-                    recorded_by_id="NUR001",
-                    recorded_by_name="Jackie Peyton, RN",
+                    recorded_by="NUR001",
                     notes=f"Triage observation timepoint #{idx+1}"
                 )
                 db.add(obs)
@@ -451,8 +449,9 @@ def seed_demo_data(db: Session = Depends(get_db)):
                     detected_at=now - datetime.timedelta(minutes=5),
                     detection_source=DetectionSourceEnum.RULE_BASED,
                     detection_rule_id=alt["rule"],
-                    detection_rule_version="1.0",
-                    summary=alt["summary"]
+                    detection_version="1.0",
+                    summary=alt["summary"],
+                    evidence=alt.get("evidence", [{"feature": "clinical_rule", "feature_name": alt["rule"], "clinical_meaning": alt["summary"]}])
                 )
                 db.add(alert_obj)
                 db.commit()
