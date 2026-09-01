@@ -1,0 +1,679 @@
+{
+  "model_name": "PatientTriage Arrival Acuity Classifier",
+  "model_version": "1.0",
+  "model_type": "CalibratedClassifierCV",
+  "base_estimator": "Multinomial Logistic Regression (L2)",
+  "calibration_method": "sigmoid_platt_cv5",
+  "trained_at": "2026-09-01T16:39:49.608101+00:00",
+  "random_seed": 42,
+  "feature_schema_version": "1.0",
+  "temporal_anchor": "T0_POINT_OF_ARRIVAL",
+  "feature_count": 37,
+  "feature_columns": [
+    "age",
+    "hr",
+    "sbp",
+    "dbp",
+    "rr",
+    "spo2",
+    "temp",
+    "gcs",
+    "pain_score",
+    "shock_index",
+    "modified_shock_index",
+    "pulse_pressure",
+    "qsofa_score",
+    "mews_score",
+    "age_pediatric",
+    "age_adult",
+    "age_geriatric",
+    "gender_male",
+    "gender_female",
+    "arrival_mode_walkin",
+    "arrival_mode_ambulance",
+    "arrival_mode_wheelchair",
+    "arrival_mode_other",
+    "complaint_chest_pain",
+    "complaint_respiratory",
+    "complaint_abdominal",
+    "complaint_neurological",
+    "complaint_trauma",
+    "complaint_infection_fever",
+    "complaint_other",
+    "temp_was_missing",
+    "gcs_was_missing",
+    "dbp_was_missing",
+    "pain_was_missing",
+    "has_known_history",
+    "is_zero_history",
+    "has_known_allergies"
+  ],
+  "numerical_feature_columns": [
+    "age",
+    "hr",
+    "sbp",
+    "dbp",
+    "rr",
+    "spo2",
+    "temp",
+    "gcs",
+    "pain_score",
+    "shock_index",
+    "modified_shock_index",
+    "pulse_pressure",
+    "qsofa_score",
+    "mews_score"
+  ],
+  "categorical_feature_columns": [
+    "age_pediatric",
+    "age_adult",
+    "age_geriatric",
+    "gender_male",
+    "gender_female",
+    "arrival_mode_walkin",
+    "arrival_mode_ambulance",
+    "arrival_mode_wheelchair",
+    "arrival_mode_other",
+    "complaint_chest_pain",
+    "complaint_respiratory",
+    "complaint_abdominal",
+    "complaint_neurological",
+    "complaint_trauma",
+    "complaint_infection_fever",
+    "complaint_other",
+    "temp_was_missing",
+    "gcs_was_missing",
+    "dbp_was_missing",
+    "pain_was_missing",
+    "has_known_history",
+    "is_zero_history",
+    "has_known_allergies"
+  ],
+  "target_column": "triage_acuity_level",
+  "target_classes": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "target_class_names": {
+    "1": "Critical \u2014 Immediate Care (ESI 1)",
+    "2": "Emergency \u2014 Immediate Assessment (ESI 2)",
+    "3": "Urgent \u2014 Prompt Assessment (ESI 3)",
+    "4": "Less Urgent (ESI 4)",
+    "5": "Non-Urgent (ESI 5)"
+  },
+  "dataset_metadata": {
+    "train_samples": 3500,
+    "val_samples": 750,
+    "test_samples": 750,
+    "class_distribution_train": {
+      "1": 293,
+      "2": 150,
+      "3": 1352,
+      "4": 1166,
+      "5": 539
+    },
+    "class_distribution_val": {
+      "1": 65,
+      "2": 31,
+      "3": 267,
+      "4": 261,
+      "5": 126
+    },
+    "class_distribution_test": {
+      "1": 58,
+      "2": 33,
+      "3": 280,
+      "4": 260,
+      "5": 119
+    }
+  },
+  "validation_benchmark": {
+    "Multinomial Logistic Regression (L2)": {
+      "accuracy": 0.704,
+      "macro_f1": 0.644,
+      "weighted_f1": 0.7122,
+      "balanced_accuracy": 0.6666,
+      "exact_agreement_rate": 0.704,
+      "under_triage_rate": 0.1893,
+      "severe_under_triage_rate": 0.0027,
+      "over_triage_rate": 0.1067,
+      "multiclass_brier_score": 0.3248,
+      "multiclass_log_loss": 0.4605,
+      "sample_count": 750,
+      "per_class_metrics": {
+        "1": {
+          "name": "Critical \u2014 Immediate Care (ESI 1)",
+          "precision": 0.8537,
+          "recall": 0.5385,
+          "f1_score": 0.6604,
+          "support": 65
+        },
+        "2": {
+          "name": "Emergency \u2014 Immediate Assessment (ESI 2)",
+          "precision": 0.4545,
+          "recall": 0.8065,
+          "f1_score": 0.5814,
+          "support": 31
+        },
+        "3": {
+          "name": "Urgent \u2014 Prompt Assessment (ESI 3)",
+          "precision": 0.9962,
+          "recall": 0.9925,
+          "f1_score": 0.9944,
+          "support": 267
+        },
+        "4": {
+          "name": "Less Urgent (ESI 4)",
+          "precision": 0.6726,
+          "recall": 0.5747,
+          "f1_score": 0.6198,
+          "support": 261
+        },
+        "5": {
+          "name": "Non-Urgent (ESI 5)",
+          "precision": 0.3212,
+          "recall": 0.4206,
+          "f1_score": 0.3643,
+          "support": 126
+        }
+      },
+      "confusion_matrix": [
+        [
+          35,
+          30,
+          0,
+          0,
+          0
+        ],
+        [
+          6,
+          25,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          265,
+          0,
+          2
+        ],
+        [
+          0,
+          0,
+          1,
+          150,
+          110
+        ],
+        [
+          0,
+          0,
+          0,
+          73,
+          53
+        ]
+      ],
+      "subgroup_performance": {
+        "Pediatric (<18y)": {
+          "sample_count": 0,
+          "status": "NO_SAMPLES"
+        },
+        "Adult (18-64y)": {
+          "sample_count": 556,
+          "accuracy": 0.7104,
+          "macro_f1": 0.6395,
+          "under_triage_rate": 0.1745,
+          "over_triage_rate": 0.1151
+        },
+        "Geriatric (>=65y)": {
+          "sample_count": 194,
+          "accuracy": 0.6856,
+          "macro_f1": 0.6362,
+          "under_triage_rate": 0.232,
+          "over_triage_rate": 0.0825
+        }
+      },
+      "train_time_sec": 0.295
+    },
+    "Random Forest Classifier (200 trees)": {
+      "accuracy": 0.712,
+      "macro_f1": 0.6241,
+      "weighted_f1": 0.7169,
+      "balanced_accuracy": 0.6262,
+      "exact_agreement_rate": 0.712,
+      "under_triage_rate": 0.1587,
+      "severe_under_triage_rate": 0.0027,
+      "over_triage_rate": 0.1293,
+      "multiclass_brier_score": 0.3214,
+      "multiclass_log_loss": 0.4636,
+      "sample_count": 750,
+      "per_class_metrics": {
+        "1": {
+          "name": "Critical \u2014 Immediate Care (ESI 1)",
+          "precision": 0.7288,
+          "recall": 0.6615,
+          "f1_score": 0.6935,
+          "support": 65
+        },
+        "2": {
+          "name": "Emergency \u2014 Immediate Assessment (ESI 2)",
+          "precision": 0.4054,
+          "recall": 0.4839,
+          "f1_score": 0.4412,
+          "support": 31
+        },
+        "3": {
+          "name": "Urgent \u2014 Prompt Assessment (ESI 3)",
+          "precision": 1.0,
+          "recall": 0.9925,
+          "f1_score": 0.9962,
+          "support": 267
+        },
+        "4": {
+          "name": "Less Urgent (ESI 4)",
+          "precision": 0.6721,
+          "recall": 0.636,
+          "f1_score": 0.6535,
+          "support": 261
+        },
+        "5": {
+          "name": "Non-Urgent (ESI 5)",
+          "precision": 0.3169,
+          "recall": 0.3571,
+          "f1_score": 0.3358,
+          "support": 126
+        }
+      },
+      "confusion_matrix": [
+        [
+          43,
+          22,
+          0,
+          0,
+          0
+        ],
+        [
+          16,
+          15,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          265,
+          0,
+          2
+        ],
+        [
+          0,
+          0,
+          0,
+          166,
+          95
+        ],
+        [
+          0,
+          0,
+          0,
+          81,
+          45
+        ]
+      ],
+      "subgroup_performance": {
+        "Pediatric (<18y)": {
+          "sample_count": 0,
+          "status": "NO_SAMPLES"
+        },
+        "Adult (18-64y)": {
+          "sample_count": 556,
+          "accuracy": 0.7032,
+          "macro_f1": 0.6032,
+          "under_triage_rate": 0.1565,
+          "over_triage_rate": 0.1403
+        },
+        "Geriatric (>=65y)": {
+          "sample_count": 194,
+          "accuracy": 0.7371,
+          "macro_f1": 0.6647,
+          "under_triage_rate": 0.1649,
+          "over_triage_rate": 0.0979
+        }
+      },
+      "train_time_sec": 0.623
+    },
+    "Gradient Boosting Classifier": {
+      "accuracy": 0.76,
+      "macro_f1": 0.5757,
+      "weighted_f1": 0.7164,
+      "balanced_accuracy": 0.5972,
+      "exact_agreement_rate": 0.76,
+      "under_triage_rate": 0.052,
+      "severe_under_triage_rate": 0.0013,
+      "over_triage_rate": 0.188,
+      "multiclass_brier_score": 0.3217,
+      "multiclass_log_loss": 0.4708,
+      "sample_count": 750,
+      "per_class_metrics": {
+        "1": {
+          "name": "Critical \u2014 Immediate Care (ESI 1)",
+          "precision": 0.68,
+          "recall": 0.7846,
+          "f1_score": 0.7286,
+          "support": 65
+        },
+        "2": {
+          "name": "Emergency \u2014 Immediate Assessment (ESI 2)",
+          "precision": 0.3333,
+          "recall": 0.2258,
+          "f1_score": 0.2692,
+          "support": 31
+        },
+        "3": {
+          "name": "Urgent \u2014 Prompt Assessment (ESI 3)",
+          "precision": 1.0,
+          "recall": 0.9925,
+          "f1_score": 0.9962,
+          "support": 267
+        },
+        "4": {
+          "name": "Less Urgent (ESI 4)",
+          "precision": 0.6685,
+          "recall": 0.9119,
+          "f1_score": 0.7715,
+          "support": 261
+        },
+        "5": {
+          "name": "Non-Urgent (ESI 5)",
+          "precision": 0.2727,
+          "recall": 0.0714,
+          "f1_score": 0.1132,
+          "support": 126
+        }
+      },
+      "confusion_matrix": [
+        [
+          51,
+          14,
+          0,
+          0,
+          0
+        ],
+        [
+          24,
+          7,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          265,
+          1,
+          1
+        ],
+        [
+          0,
+          0,
+          0,
+          238,
+          23
+        ],
+        [
+          0,
+          0,
+          0,
+          117,
+          9
+        ]
+      ],
+      "subgroup_performance": {
+        "Pediatric (<18y)": {
+          "sample_count": 0,
+          "status": "NO_SAMPLES"
+        },
+        "Adult (18-64y)": {
+          "sample_count": 556,
+          "accuracy": 0.7644,
+          "macro_f1": 0.5724,
+          "under_triage_rate": 0.0486,
+          "over_triage_rate": 0.1871
+        },
+        "Geriatric (>=65y)": {
+          "sample_count": 194,
+          "accuracy": 0.7474,
+          "macro_f1": 0.5815,
+          "under_triage_rate": 0.0619,
+          "over_triage_rate": 0.1907
+        }
+      },
+      "train_time_sec": 9.501
+    },
+    "HistGradientBoosting Classifier": {
+      "accuracy": 0.7093,
+      "macro_f1": 0.6232,
+      "weighted_f1": 0.7121,
+      "balanced_accuracy": 0.6244,
+      "exact_agreement_rate": 0.7093,
+      "under_triage_rate": 0.1533,
+      "severe_under_triage_rate": 0.0013,
+      "over_triage_rate": 0.1373,
+      "multiclass_brier_score": 0.3454,
+      "multiclass_log_loss": 0.4987,
+      "sample_count": 750,
+      "per_class_metrics": {
+        "1": {
+          "name": "Critical \u2014 Immediate Care (ESI 1)",
+          "precision": 0.7377,
+          "recall": 0.6923,
+          "f1_score": 0.7143,
+          "support": 65
+        },
+        "2": {
+          "name": "Emergency \u2014 Immediate Assessment (ESI 2)",
+          "precision": 0.4286,
+          "recall": 0.4839,
+          "f1_score": 0.4545,
+          "support": 31
+        },
+        "3": {
+          "name": "Urgent \u2014 Prompt Assessment (ESI 3)",
+          "precision": 1.0,
+          "recall": 0.9925,
+          "f1_score": 0.9962,
+          "support": 267
+        },
+        "4": {
+          "name": "Less Urgent (ESI 4)",
+          "precision": 0.6562,
+          "recall": 0.6437,
+          "f1_score": 0.6499,
+          "support": 261
+        },
+        "5": {
+          "name": "Non-Urgent (ESI 5)",
+          "precision": 0.2932,
+          "recall": 0.3095,
+          "f1_score": 0.3012,
+          "support": 126
+        }
+      },
+      "confusion_matrix": [
+        [
+          45,
+          20,
+          0,
+          0,
+          0
+        ],
+        [
+          16,
+          15,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          265,
+          1,
+          1
+        ],
+        [
+          0,
+          0,
+          0,
+          168,
+          93
+        ],
+        [
+          0,
+          0,
+          0,
+          87,
+          39
+        ]
+      ],
+      "subgroup_performance": {
+        "Pediatric (<18y)": {
+          "sample_count": 0,
+          "status": "NO_SAMPLES"
+        },
+        "Adult (18-64y)": {
+          "sample_count": 556,
+          "accuracy": 0.7158,
+          "macro_f1": 0.6409,
+          "under_triage_rate": 0.1511,
+          "over_triage_rate": 0.1331
+        },
+        "Geriatric (>=65y)": {
+          "sample_count": 194,
+          "accuracy": 0.6907,
+          "macro_f1": 0.5846,
+          "under_triage_rate": 0.1598,
+          "over_triage_rate": 0.1495
+        }
+      },
+      "train_time_sec": 9.393
+    }
+  },
+  "final_test_metrics": {
+    "accuracy": 0.784,
+    "macro_f1": 0.5087,
+    "weighted_f1": 0.7023,
+    "balanced_accuracy": 0.5792,
+    "exact_agreement_rate": 0.784,
+    "under_triage_rate": 0.02,
+    "severe_under_triage_rate": 0.0067,
+    "over_triage_rate": 0.196,
+    "multiclass_brier_score": 0.2977,
+    "multiclass_log_loss": 0.4794,
+    "sample_count": 750,
+    "per_class_metrics": {
+      "1": {
+        "name": "Critical \u2014 Immediate Care (ESI 1)",
+        "precision": 0.6543,
+        "recall": 0.9138,
+        "f1_score": 0.7626,
+        "support": 58
+      },
+      "2": {
+        "name": "Emergency \u2014 Immediate Assessment (ESI 2)",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1_score": 0.0,
+        "support": 33
+      },
+      "3": {
+        "name": "Urgent \u2014 Prompt Assessment (ESI 3)",
+        "precision": 0.9649,
+        "recall": 0.9821,
+        "f1_score": 0.9735,
+        "support": 280
+      },
+      "4": {
+        "name": "Less Urgent (ESI 4)",
+        "precision": 0.6771,
+        "recall": 1.0,
+        "f1_score": 0.8075,
+        "support": 260
+      },
+      "5": {
+        "name": "Non-Urgent (ESI 5)",
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1_score": 0.0,
+        "support": 119
+      }
+    },
+    "confusion_matrix": [
+      [
+        53,
+        0,
+        5,
+        0,
+        0
+      ],
+      [
+        28,
+        0,
+        5,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        275,
+        5,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        260,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        119,
+        0
+      ]
+    ],
+    "subgroup_performance": {
+      "Pediatric (<18y)": {
+        "sample_count": 0,
+        "status": "NO_SAMPLES"
+      },
+      "Adult (18-64y)": {
+        "sample_count": 578,
+        "accuracy": 0.7941,
+        "macro_f1": 0.5144,
+        "under_triage_rate": 0.0208,
+        "over_triage_rate": 0.1851
+      },
+      "Geriatric (>=65y)": {
+        "sample_count": 172,
+        "accuracy": 0.75,
+        "macro_f1": 0.4882,
+        "under_triage_rate": 0.0174,
+        "over_triage_rate": 0.2326
+      }
+    }
+  },
+  "environment": {
+    "python_version": "3.14.3",
+    "scikit_learn_version": "1.9.0",
+    "platform": "Windows-11-10.0.26200-SP0"
+  }
+}

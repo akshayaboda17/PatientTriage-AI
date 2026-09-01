@@ -1,0 +1,95 @@
+{
+  "dataset_name": "PatientTriage Point-of-Arrival (T0) Dataset",
+  "dataset_version": "v1.0",
+  "created_at": "2026-09-01T16:37:44.814117+00:00",
+  "temporal_anchor": "T0_PRESENTATION_ONLY",
+  "feature_count": 37,
+  "feature_columns": [
+    "age",
+    "hr",
+    "sbp",
+    "dbp",
+    "rr",
+    "spo2",
+    "temp",
+    "gcs",
+    "pain_score",
+    "shock_index",
+    "modified_shock_index",
+    "pulse_pressure",
+    "qsofa_score",
+    "mews_score",
+    "age_pediatric",
+    "age_adult",
+    "age_geriatric",
+    "gender_male",
+    "gender_female",
+    "arrival_mode_walkin",
+    "arrival_mode_ambulance",
+    "arrival_mode_wheelchair",
+    "arrival_mode_other",
+    "complaint_chest_pain",
+    "complaint_respiratory",
+    "complaint_abdominal",
+    "complaint_neurological",
+    "complaint_trauma",
+    "complaint_infection_fever",
+    "complaint_other",
+    "temp_was_missing",
+    "gcs_was_missing",
+    "dbp_was_missing",
+    "pain_was_missing",
+    "has_known_history",
+    "is_zero_history",
+    "has_known_allergies"
+  ],
+  "target_column": "triage_acuity_level",
+  "target_classes": [
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "partitions": {
+    "train": {
+      "file": "dataset_arrival_v1.0_train.csv",
+      "rows": 3500,
+      "unique_patients": 3500,
+      "class_distribution": {
+        "1": 293,
+        "2": 150,
+        "3": 1352,
+        "4": 1166,
+        "5": 539
+      },
+      "sha256": "cefe1697599852d1fcbe8228ebeb63d222bb04cd0fcbac5d2d4929721dc6e507"
+    },
+    "val": {
+      "file": "dataset_arrival_v1.0_val.csv",
+      "rows": 750,
+      "unique_patients": 750,
+      "class_distribution": {
+        "1": 65,
+        "2": 31,
+        "3": 267,
+        "4": 261,
+        "5": 126
+      },
+      "sha256": "1b3c5a4dd2d45c0ff1052ce6b9736ebe1b248d9bd1da09d5b696348f1a4d8d3b"
+    },
+    "test": {
+      "file": "dataset_arrival_v1.0_test.csv",
+      "rows": 750,
+      "unique_patients": 750,
+      "class_distribution": {
+        "1": 58,
+        "2": 33,
+        "3": 280,
+        "4": 260,
+        "5": 119
+      },
+      "sha256": "c38ca22acb42062b3fc14685793edd0e18e223061c94580e2a4d4328bed8c987"
+    }
+  }
+}

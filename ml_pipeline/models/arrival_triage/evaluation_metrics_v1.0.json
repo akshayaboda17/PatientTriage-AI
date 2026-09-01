@@ -1,0 +1,107 @@
+{
+  "accuracy": 0.784,
+  "macro_f1": 0.5087,
+  "weighted_f1": 0.7023,
+  "balanced_accuracy": 0.5792,
+  "exact_agreement_rate": 0.784,
+  "under_triage_rate": 0.02,
+  "severe_under_triage_rate": 0.0067,
+  "over_triage_rate": 0.196,
+  "multiclass_brier_score": 0.2977,
+  "multiclass_log_loss": 0.4794,
+  "sample_count": 750,
+  "per_class_metrics": {
+    "1": {
+      "name": "Critical \u2014 Immediate Care (ESI 1)",
+      "precision": 0.6543,
+      "recall": 0.9138,
+      "f1_score": 0.7626,
+      "support": 58
+    },
+    "2": {
+      "name": "Emergency \u2014 Immediate Assessment (ESI 2)",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0,
+      "support": 33
+    },
+    "3": {
+      "name": "Urgent \u2014 Prompt Assessment (ESI 3)",
+      "precision": 0.9649,
+      "recall": 0.9821,
+      "f1_score": 0.9735,
+      "support": 280
+    },
+    "4": {
+      "name": "Less Urgent (ESI 4)",
+      "precision": 0.6771,
+      "recall": 1.0,
+      "f1_score": 0.8075,
+      "support": 260
+    },
+    "5": {
+      "name": "Non-Urgent (ESI 5)",
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1_score": 0.0,
+      "support": 119
+    }
+  },
+  "confusion_matrix": [
+    [
+      53,
+      0,
+      5,
+      0,
+      0
+    ],
+    [
+      28,
+      0,
+      5,
+      0,
+      0
+    ],
+    [
+      0,
+      0,
+      275,
+      5,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      260,
+      0
+    ],
+    [
+      0,
+      0,
+      0,
+      119,
+      0
+    ]
+  ],
+  "subgroup_performance": {
+    "Pediatric (<18y)": {
+      "sample_count": 0,
+      "status": "NO_SAMPLES"
+    },
+    "Adult (18-64y)": {
+      "sample_count": 578,
+      "accuracy": 0.7941,
+      "macro_f1": 0.5144,
+      "under_triage_rate": 0.0208,
+      "over_triage_rate": 0.1851
+    },
+    "Geriatric (>=65y)": {
+      "sample_count": 172,
+      "accuracy": 0.75,
+      "macro_f1": 0.4882,
+      "under_triage_rate": 0.0174,
+      "over_triage_rate": 0.2326
+    }
+  }
+}
