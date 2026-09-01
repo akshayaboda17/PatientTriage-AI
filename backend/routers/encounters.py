@@ -94,7 +94,9 @@ def get_ed_encounters(
         ).all()
 
         wait_mins = int((now - enc.arrival_time).total_seconds() / 60) if enc.arrival_time else 0
-        triage_level = latest_triage.triage_level if latest_triage else 3
+        triage_level = latest_triage.triage_level if latest_triage else (
+            latest_ai_risk.predicted_triage_level if latest_ai_risk else 3
+        )
 
         # Round 2: Services
         from services.age_service import AgeService

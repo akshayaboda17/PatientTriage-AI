@@ -373,16 +373,26 @@ class AIRiskAssessment(Base):
     encounter_id = Column(String(50), ForeignKey('ed_encounters.encounter_id'), nullable=False, index=True)
     observation_id = Column(Integer, ForeignKey('clinical_observations.id'), nullable=True)
     
-    risk_score = Column(Float, nullable=False) # 0.0 - 100.0
+    risk_score = Column(Float, nullable=False) # 0.0 - 100.0 (24h Deterioration Decompensation Risk)
     risk_probability = Column(Float, nullable=True) # 0.0 - 1.0
     risk_category = Column(Enum(AIRiskCategoryEnum), nullable=False)
-    predicted_triage_level = Column(Integer, nullable=False)
+    predicted_triage_level = Column(Integer, nullable=False) # 1 (Critical) to 5 (Non-urgent) from Arrival ML Model
     confidence_score = Column(Float, nullable=False)
+    confidence_tier = Column(String(20), default="HIGH", nullable=True) # HIGH, MODERATE, LOW
+    uncertainty_score = Column(Float, nullable=True)
+    normalized_entropy = Column(Float, nullable=True)
+    decision_margin = Column(Float, nullable=True)
+    triage_probabilities_json = Column(JSON, nullable=True) # {"1": p1, "2": p2, "3": p3, "4": p4, "5": p5}
+    safety_escalation_required = Column(Boolean, default=False, nullable=True)
+    safety_net_triggered = Column(Boolean, default=False, nullable=True)
+    safety_triggers_json = Column(JSON, nullable=True)
     shock_index = Column(Float, nullable=True)
     qsofa = Column(Integer, nullable=True)
     mews = Column(Integer, nullable=True)
-    model_name = Column(String(100), default="PatientTriage Decompensation Risk Classifier", nullable=True)
+    model_name = Column(String(100), default="PatientTriage Arrival Acuity Classifier", nullable=True)
     model_version = Column(String(50), default="1.0", nullable=False)
+    arrival_model_name = Column(String(100), default="PatientTriage Arrival Acuity Classifier", nullable=True)
+    arrival_model_version = Column(String(50), default="1.0", nullable=True)
     input_features_json = Column(JSON, nullable=True)
     assessed_at = Column(DateTime, default=datetime.datetime.utcnow, nullable=False)
 
@@ -400,12 +410,26 @@ class AIRiskAssessment(Base):
             "risk_probability": self.risk_probability,
             "risk_category": self.risk_category.value,
             "predicted_triage_level": self.predicted_triage_level,
+            "recommended_priority": self.predicted_triage_level,
+            "probabilities": self.triage_probabilities_json or {
+                "1": 0.0, "2": 0.0, "3": 1.0, "4": 0.0, "5": 0.0
+            },
             "confidence_score": self.confidence_score,
+            "confidence_tier": self.confidence_tier or "HIGH",
+            "confidence": self.confidence_tier or "HIGH",
+            "uncertainty_score": self.uncertainty_score,
+            "normalized_entropy": self.normalized_entropy,
+            "decision_margin": self.decision_margin,
+            "safety_escalation_required": self.safety_escalation_required or False,
+            "safety_net_triggered": self.safety_net_triggered or False,
+            "safety_triggers": self.safety_triggers_json or [],
             "shock_index": self.shock_index,
             "qsofa": self.qsofa,
             "mews": self.mews,
             "model_name": self.model_name,
             "model_version": self.model_version,
+            "arrival_model_name": self.arrival_model_name,
+            "arrival_model_version": self.arrival_model_version,
             "input_features": self.input_features_json,
             "assessed_at": self.assessed_at.isoformat() if self.assessed_at else None
         }

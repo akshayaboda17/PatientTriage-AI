@@ -90,7 +90,7 @@ def generate_ai_risk_assessment(
     }
     risk_cat = category_map.get(inf["risk_category"], AIRiskCategoryEnum.MODERATE)
 
-    # 1. Persist AIRiskAssessment
+    # 1. Persist AIRiskAssessment with Arrival Triage & Decompensation Outputs
     ai_risk = AIRiskAssessment(
         assessment_id=f"AI-{staff.hospital_id[:4]}-{uuid.uuid4().hex[:6].upper()}",
         hospital_id=staff.hospital_id,
@@ -102,12 +102,22 @@ def generate_ai_risk_assessment(
         risk_category=risk_cat,
         predicted_triage_level=int(inf["predicted_triage_level"]),
         confidence_score=float(inf["confidence_score"]),
-        shock_index=float(inf["shock_index"]),
-        qsofa=int(inf["qsofa"]),
-        mews=int(inf["mews"]),
-        model_name=inf["model_name"],
-        model_version=inf["model_version"],
-        input_features_json=inf["features_snapshot"],
+        confidence_tier=inf.get("confidence_tier", "HIGH"),
+        uncertainty_score=float(inf["uncertainty_score"]) if inf.get("uncertainty_score") is not None else None,
+        normalized_entropy=float(inf["normalized_entropy"]) if inf.get("normalized_entropy") is not None else None,
+        decision_margin=float(inf["decision_margin"]) if inf.get("decision_margin") is not None else None,
+        triage_probabilities_json=inf.get("probabilities", {}),
+        safety_escalation_required=bool(inf.get("safety_escalation_required", False)),
+        safety_net_triggered=bool(inf.get("safety_net_triggered", False)),
+        safety_triggers_json=inf.get("safety_triggers", []),
+        shock_index=float(inf["shock_index"]) if inf.get("shock_index") is not None else None,
+        qsofa=int(inf["qsofa"]) if inf.get("qsofa") is not None else None,
+        mews=int(inf["mews"]) if inf.get("mews") is not None else None,
+        model_name=inf.get("model_name", "PatientTriage Arrival Acuity Classifier"),
+        model_version=inf.get("model_version", "1.0"),
+        arrival_model_name=inf.get("arrival_model_name", "PatientTriage Arrival Acuity Classifier"),
+        arrival_model_version=inf.get("arrival_model_version", "1.0"),
+        input_features_json=inf.get("features_snapshot", {}),
         assessed_at=datetime.datetime.utcnow()
     )
     db.add(ai_risk)
@@ -128,7 +138,7 @@ def generate_ai_risk_assessment(
     db.add(ai_exp)
     db.commit()
 
-    # 3. Log Audit Event (Task 11)
+    # 3. Log Immutable Audit Event
     AuditService.log_event(
         db=db,
         hospital_id=staff.hospital_id,
@@ -143,6 +153,9 @@ def generate_ai_risk_assessment(
         result=AuditResultEnum.SUCCESS,
         metadata={
             "predicted_level": ai_risk.predicted_triage_level,
+            "probabilities": ai_risk.triage_probabilities_json,
+            "confidence_tier": ai_risk.confidence_tier,
+            "uncertainty_score": ai_risk.uncertainty_score,
             "risk_score": ai_risk.risk_score,
             "risk_category": ai_risk.risk_category.value,
             "model_version": ai_risk.model_version,
@@ -152,9 +165,16 @@ def generate_ai_risk_assessment(
     )
 
     return {
-        "message": "AI Clinical Risk Assessment generated successfully.",
-        "assessment": ai_risk.to_dict(),
-        "explanation": ai_exp.to_dict()
+        "message": "AI Clinical Risk & Arrival Triage Assessment generated successfully.",
+        "recommended_priority": ai_risk.predicted_triage_level,
+        "probabilities": ai_risk.triage_probabilities_json,
+        "confidence": ai_risk.confidence_tier or "HIGH",
+        "confidence_score": ai_risk.confidence_score,
+        "uncertainty": ai_risk.uncertainty_score,
+        "explanation": ai_exp.to_dict(),
+        "model_version": ai_risk.model_version,
+        "assessment_timestamp": ai_risk.assessed_at.isoformat() if ai_risk.assessed_at else None,
+        "assessment": ai_risk.to_dict()
     }
 
 # Legacy endpoints for backward compatibility

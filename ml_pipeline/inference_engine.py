@@ -1,18 +1,26 @@
+"""
+Production Inference Engines for PatientTriage.ai.
+Hosts two decoupled, specialized ML systems:
+1. ArrivalTriageInferenceEngine: 5-level multi-class ESI arrival triage classifier (T0 presentation only).
+2. TriageRiskInferenceEngine: 24-hour longitudinal critical decompensation risk estimator.
+"""
 import os
 import json
 import joblib
 import numpy as np
 import pandas as pd
 from typing import Dict, Any, List, Optional
+
 from ml_pipeline.schema import ALL_FEATURE_COLUMNS
 from ml_pipeline.feature_extractor import ClinicalFeatureExtractor
 from ml_pipeline.preprocessor import ClinicalPreprocessor
+from ml_pipeline.arrival_inference_engine import ArrivalTriageInferenceEngine
 
 class TriageRiskInferenceEngine:
     """
-    Production Candidate Inference Engine for PatientTriage.ai.
-    Loads versioned model artifacts and executes reproducible probability estimation,
-    acuity level mapping, and safety net verification.
+    Longitudinal Decompensation Risk Inference Engine for PatientTriage.ai.
+    Predicts 24-hour composite critical outcome risk (ICU, intubation, vasopressors, mortality)
+    from sequential clinical vital trends.
     """
 
     def __init__(self, model_version: str = "1.0"):
@@ -35,7 +43,7 @@ class TriageRiskInferenceEngine:
 
     def deterministic_safety_net(self, current_obs: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """
-        Deterministic safety net: Immediately escalates catastrophic vitals to Level 1.
+        Deterministic safety net: Immediately escalates catastrophic vitals.
         """
         spo2 = current_obs.get("spo2", 98)
         gcs = current_obs.get("gcs", 15)
@@ -51,9 +59,8 @@ class TriageRiskInferenceEngine:
 
         if triggers:
             return {
-                "triage_level": 1,
-                "predicted_triage_level": 1,
                 "risk_score": 99.0,
+                "risk_probability": 0.99,
                 "risk_category": "CRITICAL",
                 "confidence_score": 100.0,
                 "safety_net_triggered": True,
@@ -70,7 +77,8 @@ class TriageRiskInferenceEngine:
         obs_index: int = 1
     ) -> Dict[str, Any]:
         """
-        Generates risk prediction, probability distribution, and acuity level.
+        Generates 24-hour decompensation risk prediction and probability.
+        NOTE: Does NOT determine arrival ESI triage level (handled by ArrivalTriageInferenceEngine).
         """
         # 1. Evaluate Deterministic Safety Net First
         safety_result = self.deterministic_safety_net(current_obs)
@@ -78,7 +86,7 @@ class TriageRiskInferenceEngine:
             return {
                 **safety_result,
                 "model_version": self.model_version,
-                "model_name": self.metadata.get("model_name", "PatientTriage Model"),
+                "model_name": self.metadata.get("model_name", "PatientTriage 24h Decompensation Risk Model"),
                 "features_snapshot": ClinicalFeatureExtractor.extract_point_in_time_features(
                     patient_data=patient_data,
                     encounter_data=encounter_data,
@@ -88,7 +96,7 @@ class TriageRiskInferenceEngine:
                 )
             }
 
-        # 2. Extract Exact 40-Dimensional Feature Vector
+        # 2. Extract Exact 40-Dimensional Longitudinal Feature Vector
         features = ClinicalFeatureExtractor.extract_point_in_time_features(
             patient_data=patient_data,
             encounter_data=encounter_data,
@@ -101,27 +109,19 @@ class TriageRiskInferenceEngine:
         df_single = pd.DataFrame([features])
         X = self.preprocessor.transform(df_single)
 
-        # 4. Model Prediction
+        # 4. Model Prediction (24h Critical Outcome Decompensation Risk)
         prob_positive = float(self.model.predict_proba(X)[0, 1])
         risk_score = round(prob_positive * 100.0, 2)
 
-        # 5. Acuity & Category Mapping
-        spo2_val = current_obs.get("spo2") if current_obs.get("spo2") is not None else 98
-        gcs_val = current_obs.get("gcs") if current_obs.get("gcs") is not None else 15
-        pain_val = current_obs.get("pain_score") if current_obs.get("pain_score") is not None else 0
-
+        # 5. Risk Category Assignment
         if risk_score >= 80.0:
             risk_category = "CRITICAL"
-            predicted_esi = 1 if spo2_val < 90 or gcs_val < 13 else 2
         elif risk_score >= 50.0:
             risk_category = "HIGH"
-            predicted_esi = 2
         elif risk_score >= 20.0:
             risk_category = "MODERATE"
-            predicted_esi = 3
         else:
             risk_category = "LOW"
-            predicted_esi = 4 if pain_val > 4 else 5
 
         # Confidence: distance from decision threshold 0.50
         confidence = round(max(prob_positive, 1.0 - prob_positive) * 100.0, 2)
@@ -130,13 +130,13 @@ class TriageRiskInferenceEngine:
             "risk_score": risk_score,
             "risk_probability": prob_positive,
             "risk_category": risk_category,
-            "predicted_triage_level": predicted_esi,
             "confidence_score": confidence,
             "shock_index": features["shock_index"],
             "qsofa": int(features["qsofa_score"]),
             "mews": int(features["mews_score"]),
             "safety_net_triggered": False,
-            "model_name": self.metadata.get("model_name", "PatientTriage Model"),
+            "safety_triggers": [],
+            "model_name": self.metadata.get("model_name", "PatientTriage 24h Decompensation Risk Model"),
             "model_version": self.model_version,
             "features_snapshot": features
         }

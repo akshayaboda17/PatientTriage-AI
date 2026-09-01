@@ -704,11 +704,42 @@ export const PatientRegistrationModal = ({ isOpen, onClose, onPatientRegistered,
                 <p className="text-[11px] text-slate-400">{assessmentResult.priorityMeta.desc}</p>
               </div>
 
+              {/* 5-Class ESI Probabilities Breakdown */}
+              {assessmentResult.aiAssessment?.probabilities && (
+                <div className="bg-slate-900/80 p-3 rounded-xl border border-slate-800 space-y-2">
+                  <div className="flex items-center justify-between text-[10px] uppercase font-bold text-slate-400">
+                    <span>5-Level ESI Probability Distribution</span>
+                    <span className="font-mono text-cyan-400">Dedicated Arrival ML Model</span>
+                  </div>
+                  <div className="grid grid-cols-5 gap-1.5 text-center">
+                    {["1", "2", "3", "4", "5"].map((esiKey) => {
+                      const pVal = Number(assessmentResult.aiAssessment.probabilities[esiKey] || 0.0);
+                      const isSelected = String(assessmentResult.predictedLevel) === esiKey;
+                      return (
+                        <div
+                          key={esiKey}
+                          className={`p-1.5 rounded-lg border text-[10px] ${
+                            isSelected
+                              ? 'bg-cyan-950/90 border-cyan-500 text-white font-bold'
+                              : 'bg-slate-950 border-slate-800 text-slate-400'
+                          }`}
+                        >
+                          <div>ESI {esiKey}</div>
+                          <div className="font-mono text-[11px] mt-0.5 text-cyan-300 font-bold">
+                            {(pVal * 100).toFixed(0)}%
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               {/* AI Risk & Confidence Strip */}
               {assessmentResult.aiAssessment ? (
-                <div className="grid grid-cols-2 gap-3 pt-2">
+                <div className="grid grid-cols-2 gap-3 pt-1">
                   <div className="p-3 bg-slate-900 rounded-xl border border-slate-800 space-y-1">
-                    <span className="text-[10px] text-slate-400 uppercase font-bold block">AI Risk</span>
+                    <span className="text-[10px] text-slate-400 uppercase font-bold block">24h Decompensation Risk</span>
                     <div className="text-base font-black text-cyan-300 font-mono">
                       {(assessmentResult.aiAssessment.risk_probability * 100).toFixed(1)}%
                     </div>
@@ -718,12 +749,12 @@ export const PatientRegistrationModal = ({ isOpen, onClose, onPatientRegistered,
                   </div>
 
                   <div className="p-3 bg-slate-900 rounded-xl border border-slate-800 space-y-1">
-                    <span className="text-[10px] text-slate-400 uppercase font-bold block">AI Confidence</span>
+                    <span className="text-[10px] text-slate-400 uppercase font-bold block">AI Confidence Tier</span>
                     <div className="text-base font-black text-emerald-400 font-mono">
-                      {assessmentResult.aiAssessment.confidence_score >= 80 ? 'HIGH' : assessmentResult.aiAssessment.confidence_score >= 60 ? 'MODERATE' : 'LOW'}
+                      {assessmentResult.aiAssessment.confidence_tier || (assessmentResult.aiAssessment.confidence_score >= 80 ? 'HIGH' : assessmentResult.aiAssessment.confidence_score >= 60 ? 'MODERATE' : 'LOW')}
                     </div>
                     <span className="text-[10px] text-slate-400 block font-sans">
-                      Confidence Score: <strong>{assessmentResult.aiAssessment.confidence_score}%</strong>
+                      Score: <strong>{assessmentResult.aiAssessment.confidence_score}%</strong>
                     </span>
                   </div>
                 </div>
