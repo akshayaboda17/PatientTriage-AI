@@ -1,0 +1,714 @@
+{
+  "candidate_validation_benchmarks": {
+    "LogisticRegression (Multinomial L2)": {
+      "accuracy": 0.9787,
+      "macro_f1": 0.9746,
+      "weighted_f1": 0.9788,
+      "balanced_accuracy": 0.9812,
+      "under_triage_rate": 0.0147,
+      "over_triage_rate": 0.0067,
+      "critical_under_triage_rate": 0.0,
+      "per_class_recall": {
+        "1": 0.9796,
+        "2": 0.994,
+        "3": 0.9851,
+        "4": 0.9474,
+        "5": 1.0
+      },
+      "per_class_precision": {
+        "1": 0.9796,
+        "2": 0.9824,
+        "3": 0.9925,
+        "4": 0.989,
+        "5": 0.9024
+      },
+      "per_class_f1": {
+        "1": 0.9796,
+        "2": 0.9882,
+        "3": 0.9888,
+        "4": 0.9677,
+        "5": 0.9487
+      },
+      "confusion_matrix": [
+        [
+          48,
+          1,
+          0,
+          0,
+          0
+        ],
+        [
+          1,
+          167,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          2,
+          265,
+          2,
+          0
+        ],
+        [
+          0,
+          0,
+          2,
+          180,
+          8
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          74
+        ]
+      ]
+    },
+    "HistGradientBoosting": {
+      "accuracy": 0.988,
+      "macro_f1": 0.987,
+      "weighted_f1": 0.988,
+      "balanced_accuracy": 0.9875,
+      "under_triage_rate": 0.0053,
+      "over_triage_rate": 0.0067,
+      "critical_under_triage_rate": 0.0,
+      "per_class_recall": {
+        "1": 1.0,
+        "2": 1.0,
+        "3": 0.9963,
+        "4": 0.9684,
+        "5": 0.973
+      },
+      "per_class_precision": {
+        "1": 1.0,
+        "2": 1.0,
+        "3": 0.9889,
+        "4": 0.984,
+        "5": 0.96
+      },
+      "per_class_f1": {
+        "1": 1.0,
+        "2": 1.0,
+        "3": 0.9926,
+        "4": 0.9761,
+        "5": 0.9664
+      },
+      "confusion_matrix": [
+        [
+          49,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          168,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          268,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          3,
+          184,
+          3
+        ],
+        [
+          0,
+          0,
+          0,
+          2,
+          72
+        ]
+      ]
+    },
+    "RandomForest": {
+      "accuracy": 0.976,
+      "macro_f1": 0.9753,
+      "weighted_f1": 0.976,
+      "balanced_accuracy": 0.9818,
+      "under_triage_rate": 0.016,
+      "over_triage_rate": 0.008,
+      "critical_under_triage_rate": 0.0046,
+      "per_class_recall": {
+        "1": 1.0,
+        "2": 0.994,
+        "3": 0.9888,
+        "4": 0.9263,
+        "5": 1.0
+      },
+      "per_class_precision": {
+        "1": 1.0,
+        "2": 0.994,
+        "3": 0.9779,
+        "4": 0.9888,
+        "5": 0.8916
+      },
+      "per_class_f1": {
+        "1": 1.0,
+        "2": 0.994,
+        "3": 0.9834,
+        "4": 0.9565,
+        "5": 0.9427
+      },
+      "confusion_matrix": [
+        [
+          49,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          167,
+          1,
+          0,
+          0
+        ],
+        [
+          0,
+          1,
+          266,
+          2,
+          0
+        ],
+        [
+          0,
+          0,
+          5,
+          176,
+          9
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          74
+        ]
+      ]
+    },
+    "GradientBoosting": {
+      "accuracy": 0.9867,
+      "macro_f1": 0.985,
+      "weighted_f1": 0.9866,
+      "balanced_accuracy": 0.9821,
+      "under_triage_rate": 0.0067,
+      "over_triage_rate": 0.0067,
+      "critical_under_triage_rate": 0.0092,
+      "per_class_recall": {
+        "1": 0.9592,
+        "2": 1.0,
+        "3": 0.9963,
+        "4": 0.9684,
+        "5": 0.9865
+      },
+      "per_class_precision": {
+        "1": 1.0,
+        "2": 1.0,
+        "3": 0.9781,
+        "4": 0.9892,
+        "5": 0.9733
+      },
+      "per_class_f1": {
+        "1": 0.9792,
+        "2": 1.0,
+        "3": 0.9871,
+        "4": 0.9787,
+        "5": 0.9799
+      },
+      "confusion_matrix": [
+        [
+          47,
+          0,
+          2,
+          0,
+          0
+        ],
+        [
+          0,
+          168,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          268,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          4,
+          184,
+          2
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          73
+        ]
+      ]
+    }
+  },
+  "winner_model": "HistGradientBoosting",
+  "test_metrics": {
+    "accuracy": 0.9813,
+    "macro_f1": 0.9772,
+    "weighted_f1": 0.9813,
+    "balanced_accuracy": 0.9767,
+    "under_triage_rate": 0.0093,
+    "over_triage_rate": 0.0093,
+    "critical_under_triage_rate": 0.0,
+    "per_class_recall": {
+      "1": 1.0,
+      "2": 1.0,
+      "3": 0.9936,
+      "4": 0.9679,
+      "5": 0.9221
+    },
+    "per_class_precision": {
+      "1": 1.0,
+      "2": 1.0,
+      "3": 0.9968,
+      "4": 0.9577,
+      "5": 0.9342
+    },
+    "per_class_f1": {
+      "1": 1.0,
+      "2": 1.0,
+      "3": 0.9952,
+      "4": 0.9628,
+      "5": 0.9281
+    },
+    "confusion_matrix": [
+      [
+        32,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        143,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        309,
+        2,
+        0
+      ],
+      [
+        0,
+        0,
+        1,
+        181,
+        5
+      ],
+      [
+        0,
+        0,
+        0,
+        6,
+        71
+      ]
+    ]
+  },
+  "subgroup_metrics": {
+    "pediatric": {
+      "sample_size": 117,
+      "class_distribution": {
+        "3": 51,
+        "4": 28,
+        "2": 25,
+        "5": 12,
+        "1": 1
+      },
+      "accuracy": 0.9915,
+      "macro_f1": 0.9878,
+      "weighted_f1": 0.9913,
+      "balanced_accuracy": 0.9833,
+      "under_triage_rate": 0.0,
+      "over_triage_rate": 0.0085,
+      "critical_under_triage_rate": 0.0,
+      "per_class_recall": {
+        "1": 1.0,
+        "2": 1.0,
+        "3": 1.0,
+        "4": 1.0,
+        "5": 0.9167
+      },
+      "per_class_precision": {
+        "1": 1.0,
+        "2": 1.0,
+        "3": 1.0,
+        "4": 0.9655,
+        "5": 1.0
+      },
+      "per_class_f1": {
+        "1": 1.0,
+        "2": 1.0,
+        "3": 1.0,
+        "4": 0.9825,
+        "5": 0.9565
+      },
+      "confusion_matrix": [
+        [
+          1,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          25,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          51,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          28,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          11
+        ]
+      ]
+    },
+    "adult": {
+      "sample_size": 414,
+      "class_distribution": {
+        "3": 168,
+        "4": 104,
+        "2": 86,
+        "5": 33,
+        "1": 23
+      },
+      "accuracy": 0.9807,
+      "macro_f1": 0.9739,
+      "weighted_f1": 0.981,
+      "balanced_accuracy": 0.9819,
+      "under_triage_rate": 0.0169,
+      "over_triage_rate": 0.0024,
+      "critical_under_triage_rate": 0.0,
+      "per_class_recall": {
+        "1": 1.0,
+        "2": 1.0,
+        "3": 0.9881,
+        "4": 0.9519,
+        "5": 0.9697
+      },
+      "per_class_precision": {
+        "1": 1.0,
+        "2": 1.0,
+        "3": 1.0,
+        "4": 0.9706,
+        "5": 0.8649
+      },
+      "per_class_f1": {
+        "1": 1.0,
+        "2": 1.0,
+        "3": 0.994,
+        "4": 0.9612,
+        "5": 0.9143
+      },
+      "confusion_matrix": [
+        [
+          23,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          86,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          166,
+          2,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          99,
+          5
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          32
+        ]
+      ]
+    },
+    "geriatric": {
+      "sample_size": 219,
+      "class_distribution": {
+        "3": 92,
+        "4": 55,
+        "2": 32,
+        "5": 32,
+        "1": 8
+      },
+      "accuracy": 0.9772,
+      "macro_f1": 0.9767,
+      "weighted_f1": 0.9769,
+      "balanced_accuracy": 0.9714,
+      "under_triage_rate": 0.0,
+      "over_triage_rate": 0.0228,
+      "critical_under_triage_rate": 0.0,
+      "per_class_recall": {
+        "1": 1.0,
+        "2": 1.0,
+        "3": 1.0,
+        "4": 0.9818,
+        "5": 0.875
+      },
+      "per_class_precision": {
+        "1": 1.0,
+        "2": 1.0,
+        "3": 0.9892,
+        "4": 0.931,
+        "5": 1.0
+      },
+      "per_class_f1": {
+        "1": 1.0,
+        "2": 1.0,
+        "3": 0.9946,
+        "4": 0.9558,
+        "5": 0.9333
+      },
+      "confusion_matrix": [
+        [
+          8,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          32,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          92,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          1,
+          54,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          4,
+          28
+        ]
+      ]
+    },
+    "zero_history": {
+      "sample_size": 104,
+      "class_distribution": {
+        "3": 48,
+        "4": 30,
+        "2": 17,
+        "5": 6,
+        "1": 3
+      },
+      "accuracy": 0.9712,
+      "macro_f1": 0.9547,
+      "weighted_f1": 0.9713,
+      "balanced_accuracy": 0.9558,
+      "under_triage_rate": 0.0192,
+      "over_triage_rate": 0.0096,
+      "critical_under_triage_rate": 0.0,
+      "per_class_recall": {
+        "1": 1.0,
+        "2": 1.0,
+        "3": 0.9792,
+        "4": 0.9667,
+        "5": 0.8333
+      },
+      "per_class_precision": {
+        "1": 1.0,
+        "2": 1.0,
+        "3": 1.0,
+        "4": 0.9355,
+        "5": 0.8333
+      },
+      "per_class_f1": {
+        "1": 1.0,
+        "2": 1.0,
+        "3": 0.9895,
+        "4": 0.9508,
+        "5": 0.8333
+      },
+      "confusion_matrix": [
+        [
+          3,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          17,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          47,
+          1,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          29,
+          1
+        ],
+        [
+          0,
+          0,
+          0,
+          1,
+          5
+        ]
+      ]
+    },
+    "ambiguous_symptoms": {
+      "sample_size": 145,
+      "class_distribution": {
+        "3": 121,
+        "2": 24
+      },
+      "accuracy": 1.0,
+      "macro_f1": 1.0,
+      "weighted_f1": 1.0,
+      "balanced_accuracy": 1.0,
+      "under_triage_rate": 0.0,
+      "over_triage_rate": 0.0,
+      "critical_under_triage_rate": 0.0,
+      "per_class_recall": {
+        "1": 0.0,
+        "2": 1.0,
+        "3": 1.0,
+        "4": 0.0,
+        "5": 0.0
+      },
+      "per_class_precision": {
+        "1": 0.0,
+        "2": 1.0,
+        "3": 1.0,
+        "4": 0.0,
+        "5": 0.0
+      },
+      "per_class_f1": {
+        "1": 0.0,
+        "2": 1.0,
+        "3": 1.0,
+        "4": 0.0,
+        "5": 0.0
+      },
+      "confusion_matrix": [
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          24,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          121,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        [
+          0,
+          0,
+          0,
+          0,
+          0
+        ]
+      ]
+    }
+  }
+}

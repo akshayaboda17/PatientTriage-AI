@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Stethoscope, ShieldAlert, Cpu, Activity, Info, AlertTriangle, AlertCircle, BarChart2 } from 'lucide-react';
+import { Sparkles, Stethoscope, ShieldAlert, Cpu, Activity, Info, AlertTriangle, AlertCircle, BarChart2, CheckCircle2, UserCheck } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { ConfidenceBadge } from '../common/StateViews';
 import { getRiskCategoryMeta, getPriorityMeta } from '../../utils/terminology';
@@ -15,13 +15,11 @@ export const AiRiskCard = ({ aiRisk, onGenerateAi, generatingAi, onOpenReview })
     "1": 0.0, "2": 0.0, "3": 1.0, "4": 0.0, "5": 0.0
   };
 
-  const esiLabels = {
-    "1": "ESI 1 (Resuscitation)",
-    "2": "ESI 2 (Emergent)",
-    "3": "ESI 3 (Urgent)",
-    "4": "ESI 4 (Less Urgent)",
-    "5": "ESI 5 (Non-Urgent)"
-  };
+  const ageGroup = aiRisk?.age_group || (aiRisk?.patient_age < 18 ? 'PEDIATRIC' : (aiRisk?.patient_age >= 65 ? 'GERIATRIC' : 'ADULT'));
+  const completenessScore = aiRisk?.data_completeness_score !== undefined ? aiRisk.data_completeness_score : 1.0;
+  const qualityTier = aiRisk?.data_quality_tier || (completenessScore >= 0.85 ? 'HIGH' : (completenessScore >= 0.65 ? 'MODERATE' : 'LIMITED'));
+  const limitations = aiRisk?.data_limitations || [];
+  const factors = aiRisk?.contributing_factors || [];
 
   return (
     <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-5 shadow-xl space-y-4">
@@ -33,12 +31,22 @@ export const AiRiskCard = ({ aiRisk, onGenerateAi, generatingAi, onOpenReview })
           </div>
           <div>
             <h3 className="text-sm font-bold text-white tracking-tight">AI Clinical Triage &amp; Risk Assessment</h3>
-            <p className="text-[10px] text-slate-400">Dedicated Arrival ML Model (v1.0) &amp; 24h Decompensation Risk</p>
+            <p className="text-[10px] text-slate-400">Age-Aware Arrival ML Model (v1.1) &amp; 24h Decompensation Risk</p>
           </div>
         </div>
-        <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-slate-300">
-          Arrival ML v{aiRisk?.arrival_model_version || aiRisk?.model_version || '1.0'}
-        </span>
+        <div className="flex items-center gap-2">
+          {/* Age Group Tag */}
+          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+            ageGroup === 'PEDIATRIC' ? 'bg-amber-950/80 border-amber-700 text-amber-300' :
+            ageGroup === 'GERIATRIC' ? 'bg-purple-950/80 border-purple-700 text-purple-300' :
+            'bg-blue-950/80 border-blue-700 text-blue-300'
+          }`}>
+            {ageGroup}
+          </span>
+          <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 border border-slate-700 text-slate-300">
+            Arrival ML v{aiRisk?.arrival_model_version || aiRisk?.model_version || '1.1'}
+          </span>
+        </div>
       </div>
 
       {aiRisk ? (
@@ -122,6 +130,39 @@ export const AiRiskCard = ({ aiRisk, onGenerateAi, generatingAi, onOpenReview })
             </div>
           </div>
 
+          {/* DATA QUALITY & COMPLETENESS TIER */}
+          <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800 flex items-center justify-between text-xs font-mono">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-cyan-400" />
+              <div>
+                <div className="text-slate-400 text-[10px] uppercase font-sans">Data Quality &amp; Intake Completeness</div>
+                <div className="text-slate-200 text-xs font-bold font-sans">
+                  Tier: <span className={qualityTier === 'HIGH' ? 'text-emerald-400' : qualityTier === 'MODERATE' ? 'text-amber-400' : 'text-rose-400'}>{qualityTier}</span> ({(completenessScore * 100).toFixed(0)}% complete)
+                </div>
+              </div>
+            </div>
+            {limitations.length > 0 && (
+              <span className="text-[10px] text-amber-300 bg-amber-950/60 border border-amber-800 px-2 py-0.5 rounded">
+                {limitations.length} Data Caveat{limitations.length > 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+
+          {/* Data Limitations Disclaimer */}
+          {limitations.length > 0 && (
+            <div className="p-2.5 bg-slate-950/80 border border-slate-800 rounded-xl space-y-1">
+              <div className="text-[10px] uppercase font-bold text-slate-400 flex items-center gap-1">
+                <Info className="w-3 h-3 text-cyan-400" />
+                <span>Information Limitations</span>
+              </div>
+              <ul className="text-[11px] text-slate-300 list-disc list-inside space-y-0.5">
+                {limitations.map((lim, idx) => (
+                  <li key={idx}>{lim}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {/* 24-HOUR DECOMPENSATION RISK & CLINICAL METRICS */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs font-mono">
             <div className="bg-slate-950/60 p-3 rounded-xl border border-slate-800 flex flex-col justify-between">
@@ -158,24 +199,23 @@ export const AiRiskCard = ({ aiRisk, onGenerateAi, generatingAi, onOpenReview })
             <div className="p-3 bg-rose-950/70 border border-rose-600/80 rounded-xl text-rose-200 text-xs space-y-1">
               <div className="flex items-center gap-1.5 font-bold text-rose-300">
                 <ShieldAlert className="w-4 h-4 text-rose-400 animate-pulse" />
-                <span>Immediate Clinical Attention Recommended</span>
+                <span>Safety Escalation: Clinician Review Required</span>
               </div>
               <p className="text-[11px] text-rose-200/90">
-                AI confidence is reduced due to borderline multi-class probability spread. Attending clinician review is recommended.
+                {aiRisk.safety_escalation_reason || 'Uncertain high-acuity prediction distribution — attending clinician review is required.'}
               </p>
             </div>
           )}
 
-          {/* Discordance Notice */}
-          {aiRisk.discordance_info?.is_discordant && (
-            <div className="p-2.5 bg-yellow-950/60 border border-yellow-800/60 rounded-xl text-yellow-200 text-[11px] space-y-0.5">
-              <div className="flex items-center gap-1 font-bold text-yellow-300">
-                <AlertCircle className="w-3.5 h-3.5" />
-                <span>Clinical Presentation Requires Verification</span>
-              </div>
-              <p className="text-yellow-200/80 text-[10px]">
-                {aiRisk.discordance_info.explanation}
-              </p>
+          {/* Contributing Factors */}
+          {factors.length > 0 && (
+            <div className="p-3 bg-slate-950/60 border border-slate-800 rounded-xl space-y-1 text-xs">
+              <div className="text-[10px] uppercase font-bold text-slate-400">Factors Influencing Assessment</div>
+              <ul className="text-[11px] text-slate-300 list-disc list-inside space-y-0.5">
+                {factors.map((f, i) => (
+                  <li key={i}>{f}</li>
+                ))}
+              </ul>
             </div>
           )}
         </>

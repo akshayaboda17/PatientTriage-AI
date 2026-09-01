@@ -1,0 +1,55 @@
+{
+  "dataset_name": "PatientTriage Age-Aware & Data-Quality Arrival Triage Dataset",
+  "dataset_version": "1.1",
+  "generation_timestamp": "2026-09-01T17:21:57.252273+00:00",
+  "total_samples": 5000,
+  "feature_count": 50,
+  "target_column": "triage_acuity_level",
+  "splits": {
+    "train": {
+      "unique_patients": 3500,
+      "total_samples": 3500,
+      "pediatric_count": 535,
+      "adult_count": 1945,
+      "geriatric_count": 1020,
+      "zero_history_count": 523,
+      "class_distribution": {
+        "3": 1323,
+        "4": 918,
+        "2": 723,
+        "5": 363,
+        "1": 173
+      }
+    },
+    "val": {
+      "unique_patients": 750,
+      "total_samples": 750,
+      "pediatric_count": 92,
+      "adult_count": 416,
+      "geriatric_count": 242,
+      "zero_history_count": 128,
+      "class_distribution": {
+        "3": 269,
+        "4": 190,
+        "2": 168,
+        "5": 74,
+        "1": 49
+      }
+    },
+    "test": {
+      "unique_patients": 750,
+      "total_samples": 750,
+      "pediatric_count": 117,
+      "adult_count": 414,
+      "geriatric_count": 219,
+      "zero_history_count": 104,
+      "class_distribution": {
+        "3": 311,
+        "4": 187,
+        "2": 143,
+        "5": 77,
+        "1": 32
+      }
+    }
+  }
+}

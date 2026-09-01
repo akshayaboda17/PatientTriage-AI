@@ -43,7 +43,7 @@ class MLInferenceService:
     _engine_load_error: Optional[str] = None
 
     @classmethod
-    def get_arrival_engine(cls, model_version: str = "1.0") -> ArrivalTriageInferenceEngine:
+    def get_arrival_engine(cls, model_version: str = "1.1") -> ArrivalTriageInferenceEngine:
         """
         Singleton accessor for the dedicated Arrival Triage ML inference engine.
         """

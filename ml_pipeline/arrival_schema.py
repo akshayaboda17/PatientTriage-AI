@@ -1,7 +1,8 @@
 """
-Arrival Triage ML Schema for PatientTriage.ai.
-Defines strict Point-of-Arrival (T0) feature space, 5-level triage target,
-clinical plausibility bounds, and prohibited temporal leakage columns.
+Arrival Triage ML Schema for PatientTriage.ai (Task 4 v1.1).
+Defines strict Point-of-Arrival (T0) feature space, age-aware interactions,
+data-quality completeness metrics, 5-level triage target, clinical plausibility bounds,
+and prohibited temporal leakage columns.
 """
 from typing import List, Dict, Any
 
@@ -27,13 +28,22 @@ ARRIVAL_NUMERICAL_FEATURE_COLUMNS: List[str] = [
     "modified_shock_index",
     "pulse_pressure",
     "qsofa_score",
-    "mews_score"
+    "mews_score",
+    "data_completeness_score",
+    "vital_missing_count"
 ]
 
 ARRIVAL_CATEGORICAL_BINARY_FEATURE_COLUMNS: List[str] = [
     "age_pediatric",
     "age_adult",
     "age_geriatric",
+    "pediatric_high_hr",
+    "pediatric_high_rr",
+    "pediatric_hypotension",
+    "geriatric_blunted_tachycardia",
+    "geriatric_tachypnea",
+    "geriatric_hypotension",
+    "geriatric_hypothermia_risk",
     "gender_male",
     "gender_female",
     "arrival_mode_walkin",
@@ -47,12 +57,16 @@ ARRIVAL_CATEGORICAL_BINARY_FEATURE_COLUMNS: List[str] = [
     "complaint_trauma",
     "complaint_infection_fever",
     "complaint_other",
+    "complaint_is_ambiguous",
+    "complaint_is_negated",
+    "spo2_was_missing",
     "temp_was_missing",
     "gcs_was_missing",
     "dbp_was_missing",
     "pain_was_missing",
     "has_known_history",
     "is_zero_history",
+    "history_is_unknown",
     "has_known_allergies"
 ]
 
@@ -103,7 +117,7 @@ PROHIBITED_ARRIVAL_LEAKAGE_COLUMNS: List[str] = [
     "future_vitals"
 ]
 
-# Clinical Plausibility Ranges
+# Clinical Plausibility Ranges for Input Validation
 ARRIVAL_FEATURE_BOUNDS: Dict[str, Dict[str, float]] = {
     "age": {"min": 0.0, "max": 125.0},
     "hr": {"min": 20.0, "max": 280.0},
@@ -113,10 +127,5 @@ ARRIVAL_FEATURE_BOUNDS: Dict[str, Dict[str, float]] = {
     "spo2": {"min": 40.0, "max": 100.0},
     "temp": {"min": 28.0, "max": 45.0},
     "gcs": {"min": 3.0, "max": 15.0},
-    "pain_score": {"min": 0.0, "max": 10.0},
-    "shock_index": {"min": 0.1, "max": 5.0},
-    "modified_shock_index": {"min": 0.1, "max": 6.0},
-    "pulse_pressure": {"min": 5.0, "max": 200.0},
-    "qsofa_score": {"min": 0.0, "max": 3.0},
-    "mews_score": {"min": 0.0, "max": 14.0}
+    "pain_score": {"min": 0.0, "max": 10.0}
 }

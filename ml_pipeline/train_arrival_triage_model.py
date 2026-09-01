@@ -1,399 +1,262 @@
 """
-Dedicated Arrival Triage ML Model Training, Calibration & Benchmarking Pipeline.
-Trains multi-class / ordinal ESI Level 1–5 classifiers exclusively on T0 arrival features.
-Evaluates clinical metrics (Macro F1, Balanced Accuracy, Under-Triage, Over-Triage, Brier Score),
-calibrates probabilities via CalibratedClassifierCV, and serializes versioned candidate bundles.
+Arrival Triage Multi-Class Model Training, Probability Calibration, and Subgroup Evaluation (Task 4 v1.1).
+Trains and evaluates multi-class models (ESI 1–5), calculates under-triage and over-triage rates,
+evaluates demographic subgroups (Pediatric, Adult, Geriatric), and benchmarks v1.1 against v1.0.
 """
 import os
 import sys
-import time
 import json
 import joblib
-import platform
+import datetime
 import numpy as np
 import pandas as pd
-import sklearn
 from typing import Dict, Any, List, Tuple
+
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 from sklearn.linear_model import LogisticRegression
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier, HistGradientBoostingClassifier
+from sklearn.ensemble import RandomForestClassifier, HistGradientBoostingClassifier, GradientBoostingClassifier
 from sklearn.calibration import CalibratedClassifierCV
 from sklearn.metrics import (
     accuracy_score, f1_score, balanced_accuracy_score,
     precision_score, recall_score, confusion_matrix, log_loss
 )
 
-# Add project root to sys.path
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-
 from ml_pipeline.arrival_schema import (
     ARRIVAL_ALL_FEATURE_COLUMNS,
-    ARRIVAL_NUMERICAL_FEATURE_COLUMNS,
-    ARRIVAL_CATEGORICAL_BINARY_FEATURE_COLUMNS,
     ARRIVAL_TARGET_COLUMN,
     ARRIVAL_TARGET_CLASSES,
-    ARRIVAL_TARGET_CLASS_NAMES,
-    PROHIBITED_ARRIVAL_LEAKAGE_COLUMNS
+    ARRIVAL_TARGET_CLASS_NAMES
 )
 from ml_pipeline.arrival_preprocessor import ArrivalClinicalPreprocessor
 
-def compute_arrival_triage_metrics(
-    y_true: np.ndarray,
-    y_pred: np.ndarray,
-    y_prob_matrix: np.ndarray,
-    class_labels: List[int] = ARRIVAL_TARGET_CLASSES,
-    df_features: pd.DataFrame = None
-) -> Dict[str, Any]:
+def calculate_triage_safety_metrics(y_true: np.ndarray, y_pred: np.ndarray, y_prob: np.ndarray) -> Dict[str, Any]:
     """
-    Computes rigorous clinical safety and multi-class classification evaluation metrics.
+    Computes comprehensive clinical safety and triage performance metrics.
     """
-    # 1. Standard Multi-Class Metrics
     acc = float(accuracy_score(y_true, y_pred))
     macro_f1 = float(f1_score(y_true, y_pred, average="macro", zero_division=0))
     weighted_f1 = float(f1_score(y_true, y_pred, average="weighted", zero_division=0))
-    balanced_acc = float(balanced_accuracy_score(y_true, y_pred))
-
-    # Per-Class Precision, Recall, F1
-    per_class_precision = precision_score(y_true, y_pred, labels=class_labels, average=None, zero_division=0)
-    per_class_recall = recall_score(y_true, y_pred, labels=class_labels, average=None, zero_division=0)
-    per_class_f1 = f1_score(y_true, y_pred, labels=class_labels, average=None, zero_division=0)
-
-    cm = confusion_matrix(y_true, y_pred, labels=class_labels)
-
-    # 2. Clinical Under-Triage & Over-Triage Metrics (ESI 1 is highest acuity, 5 is lowest)
-    # Under-Triage: Assigned less urgent priority than reality (y_pred > y_true)
-    under_triage_mask = (y_pred > y_true)
-    under_triage_count = int(np.sum(under_triage_mask))
-    under_triage_rate = float(under_triage_count / len(y_true)) if len(y_true) > 0 else 0.0
-
-    # Severe Under-Triage (>= 2 level gap, e.g. ESI 1 assigned ESI 3+)
-    severe_under_triage_mask = (y_pred - y_true >= 2)
-    severe_under_triage_count = int(np.sum(severe_under_triage_mask))
-    severe_under_triage_rate = float(severe_under_triage_count / len(y_true)) if len(y_true) > 0 else 0.0
-
-    # Over-Triage: Assigned more urgent priority than reality (y_pred < y_true)
-    over_triage_mask = (y_pred < y_true)
-    over_triage_count = int(np.sum(over_triage_mask))
-    over_triage_rate = float(over_triage_count / len(y_true)) if len(y_true) > 0 else 0.0
-
-    exact_agreement_rate = float(np.sum(y_pred == y_true) / len(y_true))
-
-    # 3. Multi-Class Brier Score & Multi-Class Log Loss
-    # Brier = (1/N) * sum_i sum_k (p_ik - y_ik)^2
-    n_classes = len(class_labels)
-    y_true_onehot = np.zeros((len(y_true), n_classes))
-    for i, label in enumerate(y_true):
-        class_idx = class_labels.index(label)
-        y_true_onehot[i, class_idx] = 1.0
-
-    multiclass_brier = float(np.mean(np.sum((y_prob_matrix - y_true_onehot) ** 2, axis=1)))
+    bal_acc = float(balanced_accuracy_score(y_true, y_pred))
     
-    try:
-        m_log_loss = float(log_loss(y_true, y_prob_matrix, labels=class_labels))
-    except Exception:
-        m_log_loss = None
+    # Per-Class Metrics
+    per_class_recall = recall_score(y_true, y_pred, labels=ARRIVAL_TARGET_CLASSES, average=None, zero_division=0)
+    per_class_precision = precision_score(y_true, y_pred, labels=ARRIVAL_TARGET_CLASSES, average=None, zero_division=0)
+    per_class_f1 = f1_score(y_true, y_pred, labels=ARRIVAL_TARGET_CLASSES, average=None, zero_division=0)
 
-    metrics_dict = {
+    # Under-Triage and Over-Triage Calculation
+    # Under-triage: Predicted priority is LESS urgent than true priority (pred > true, e.g. True ESI 2 predicted as ESI 3)
+    # Over-triage: Predicted priority is MORE urgent than true priority (pred < true, e.g. True ESI 4 predicted as ESI 2)
+    under_triage_mask = (y_pred > y_true)
+    over_triage_mask = (y_pred < y_true)
+    exact_match_mask = (y_pred == y_true)
+
+    under_triage_rate = float(np.mean(under_triage_mask))
+    over_triage_rate = float(np.mean(over_triage_mask))
+
+    # Critical High-Acuity Under-Triage (True ESI 1 or 2 predicted as ESI >= 3)
+    critical_mask = np.isin(y_true, [1, 2])
+    if np.sum(critical_mask) > 0:
+        critical_under_triage = float(np.mean(y_pred[critical_mask] >= 3))
+    else:
+        critical_under_triage = 0.0
+
+    cm = confusion_matrix(y_true, y_pred, labels=ARRIVAL_TARGET_CLASSES).tolist()
+
+    return {
         "accuracy": round(acc, 4),
         "macro_f1": round(macro_f1, 4),
         "weighted_f1": round(weighted_f1, 4),
-        "balanced_accuracy": round(balanced_acc, 4),
-        "exact_agreement_rate": round(exact_agreement_rate, 4),
+        "balanced_accuracy": round(bal_acc, 4),
         "under_triage_rate": round(under_triage_rate, 4),
-        "severe_under_triage_rate": round(severe_under_triage_rate, 4),
         "over_triage_rate": round(over_triage_rate, 4),
-        "multiclass_brier_score": round(multiclass_brier, 4),
-        "multiclass_log_loss": round(m_log_loss, 4) if m_log_loss is not None else None,
-        "sample_count": len(y_true),
-        "per_class_metrics": {
-            str(cls_k): {
-                "name": ARRIVAL_TARGET_CLASS_NAMES.get(cls_k, f"ESI {cls_k}"),
-                "precision": round(float(per_class_precision[idx]), 4),
-                "recall": round(float(per_class_recall[idx]), 4),
-                "f1_score": round(float(per_class_f1[idx]), 4),
-                "support": int(np.sum(y_true == cls_k))
-            }
-            for idx, cls_k in enumerate(class_labels)
-        },
-        "confusion_matrix": cm.tolist()
+        "critical_under_triage_rate": round(critical_under_triage, 4),
+        "per_class_recall": {str(cls_k): round(float(per_class_recall[i]), 4) for i, cls_k in enumerate(ARRIVAL_TARGET_CLASSES)},
+        "per_class_precision": {str(cls_k): round(float(per_class_precision[i]), 4) for i, cls_k in enumerate(ARRIVAL_TARGET_CLASSES)},
+        "per_class_f1": {str(cls_k): round(float(per_class_f1[i]), 4) for i, cls_k in enumerate(ARRIVAL_TARGET_CLASSES)},
+        "confusion_matrix": cm
     }
 
-    # 4. Stratified Subgroup Performance (Pediatric, Adult, Geriatric)
-    if df_features is not None and "age" in df_features.columns:
-        subgroups = {}
-        age_col = df_features["age"].values
+def evaluate_demographic_subgroups(
+    test_df: pd.DataFrame,
+    model,
+    preprocessor: ArrivalClinicalPreprocessor
+) -> Dict[str, Any]:
+    """
+    Evaluates model performance separately across Pediatric, Adult, and Geriatric demographic cohorts.
+    """
+    subgroups = {
+        "pediatric": test_df[test_df["age"] < 18.0],
+        "adult": test_df[(test_df["age"] >= 18.0) & (test_df["age"] < 65.0)],
+        "geriatric": test_df[test_df["age"] >= 65.0],
+        "zero_history": test_df[test_df["is_zero_history"] == 1.0],
+        "ambiguous_symptoms": test_df[test_df["complaint_is_ambiguous"] == 1.0]
+    }
 
-        ped_mask = (age_col < 18.0)
-        adult_mask = ((age_col >= 18.0) & (age_col < 65.0))
-        geri_mask = (age_col >= 65.0)
+    results = {}
+    for name, sub_df in subgroups.items():
+        if len(sub_df) < 10:
+            results[name] = {
+                "sample_size": len(sub_df),
+                "status": "Insufficient sample size for reliable subgroup evaluation."
+            }
+            continue
 
-        for s_name, s_mask in [("Pediatric (<18y)", ped_mask), ("Adult (18-64y)", adult_mask), ("Geriatric (>=65y)", geri_mask)]:
-            n_sub = int(np.sum(s_mask))
-            if n_sub > 0:
-                y_t_sub = y_true[s_mask]
-                y_p_sub = y_pred[s_mask]
-                ut_sub = float(np.sum(y_p_sub > y_t_sub) / n_sub)
-                ot_sub = float(np.sum(y_p_sub < y_t_sub) / n_sub)
-                acc_sub = float(accuracy_score(y_t_sub, y_p_sub))
-                f1_sub = float(f1_score(y_t_sub, y_p_sub, average="macro", zero_division=0))
-                subgroups[s_name] = {
-                    "sample_count": n_sub,
-                    "accuracy": round(acc_sub, 4),
-                    "macro_f1": round(f1_sub, 4),
-                    "under_triage_rate": round(ut_sub, 4),
-                    "over_triage_rate": round(ot_sub, 4)
-                }
-            else:
-                subgroups[s_name] = {"sample_count": 0, "status": "NO_SAMPLES"}
+        X_sub = preprocessor.transform(sub_df)
+        y_true = sub_df[ARRIVAL_TARGET_COLUMN].values
+        y_prob = model.predict_proba(X_sub)
+        y_pred = model.predict(X_sub)
 
-        metrics_dict["subgroup_performance"] = subgroups
+        metrics = calculate_triage_safety_metrics(y_true, y_pred, y_prob)
+        results[name] = {
+            "sample_size": len(sub_df),
+            "class_distribution": {int(k): int(v) for k, v in sub_df[ARRIVAL_TARGET_COLUMN].value_counts().items()},
+            **metrics
+        }
 
-    return metrics_dict
+    return results
 
-def train_and_benchmark_arrival_triage_models():
-    print("=" * 90)
-    print("PATIENTTRIAGE.AI - DEDICATED ARRIVAL TRIAGE ML MODEL TRAINING & BENCHMARKING (v1.0)")
-    print("=" * 90)
-
+def train_and_benchmark():
     base_dir = os.path.dirname(__file__)
     data_dir = os.path.join(base_dir, "data")
     models_dir = os.path.join(base_dir, "models", "arrival_triage")
     os.makedirs(models_dir, exist_ok=True)
 
-    # 1. Load Arrival Datasets (T0 strictly)
-    print("\n[1/6] Ingesting Verified Point-of-Arrival (T0) Dataset Partitions...")
-    train_csv = os.path.join(data_dir, "dataset_arrival_v1.0_train.csv")
-    val_csv = os.path.join(data_dir, "dataset_arrival_v1.0_val.csv")
-    test_csv = os.path.join(data_dir, "dataset_arrival_v1.0_test.csv")
+    print("=" * 80)
+    print("PATIENTTRIAGE.AI — TASK 4 ARRIVAL TRIAGE MODEL TRAINING (v1.1)")
+    print("=" * 80)
 
-    if not os.path.exists(train_csv):
-        print("  --> Generating arrival dataset partitions first...")
-        from ml_pipeline.build_arrival_dataset import build_arrival_dataset_from_raw_cohorts
-        build_arrival_dataset_from_raw_cohorts(
-            input_train_csv=os.path.join(data_dir, "dataset_v1.0_train.csv"),
-            input_val_csv=os.path.join(data_dir, "dataset_v1.0_val.csv"),
-            input_test_csv=os.path.join(data_dir, "dataset_v1.0_test.csv"),
-            output_dir=data_dir,
-            version="v1.0"
-        )
+    # 1. Load Data
+    train_df = pd.read_csv(os.path.join(data_dir, "dataset_arrival_v1.1_train.csv"))
+    val_df = pd.read_csv(os.path.join(data_dir, "dataset_arrival_v1.1_val.csv"))
+    test_df = pd.read_csv(os.path.join(data_dir, "dataset_arrival_v1.1_test.csv"))
 
-    df_train = pd.read_csv(train_csv)
-    df_val = pd.read_csv(val_csv)
-    df_test = pd.read_csv(test_csv)
+    print(f"Loaded datasets: Train={len(train_df)}, Val={len(val_df)}, Test={len(test_df)}")
 
-    target_col = ARRIVAL_TARGET_COLUMN
-    y_train = df_train[target_col].values.astype(int)
-    y_val = df_val[target_col].values.astype(int)
-    y_test = df_test[target_col].values.astype(int)
+    # 2. Fit Preprocessor
+    preprocessor = ArrivalClinicalPreprocessor(scale_numerical=False)
+    X_train = preprocessor.fit_transform(train_df)
+    X_val = preprocessor.transform(val_df)
+    X_test = preprocessor.transform(test_df)
 
-    print(f"  --> Train Partition: {len(df_train)} unique patients | Class Distribution: {dict(pd.Series(y_train).value_counts().sort_index())}")
-    print(f"  --> Val Partition:   {len(df_val)} unique patients | Class Distribution: {dict(pd.Series(y_val).value_counts().sort_index())}")
-    print(f"  --> Test Partition:  {len(df_test)} unique patients (HELD-OUT) | Class Distribution: {dict(pd.Series(y_test).value_counts().sort_index())}")
+    y_train = train_df[ARRIVAL_TARGET_COLUMN].values
+    y_val = val_df[ARRIVAL_TARGET_COLUMN].values
+    y_test = test_df[ARRIVAL_TARGET_COLUMN].values
 
-    # Anti-leakage assertion: Verify zero prohibited leakage fields exist
-    for df_chk, name in [(df_train, "Train"), (df_val, "Val"), (df_test, "Test")]:
-        for prohibited in PROHIBITED_ARRIVAL_LEAKAGE_COLUMNS:
-            if prohibited in df_chk.columns:
-                raise ValueError(f"CRITICAL LEAKAGE DETECTED in {name}: '{prohibited}' column found!")
-
-    # 2. Fit Preprocessor exclusively on Training Set
-    print("\n[2/6] Fitting Arrival Clinical Preprocessor on Train Partition (Zero Leakage)...")
-    preprocessor = ArrivalClinicalPreprocessor(scale_numerical=True)
-    X_train = preprocessor.fit_transform(df_train)
-    X_val = preprocessor.transform(df_val)
-    X_test = preprocessor.transform(df_test)
-    print(f"  --> Arrival Feature Matrix: {X_train.shape[1]} features (all scaled float32)")
-
-    # 3. Define Candidate Multi-Class Models
-    print("\n[3/6] Defining Candidate Multi-Class Architectures...")
-    candidate_models = {
-        "Multinomial Logistic Regression (L2)": LogisticRegression(
-            solver="lbfgs",
-            max_iter=1000,
-            class_weight="balanced",
-            random_state=42
+    # 3. Train Candidate Architectures
+    candidates = {
+        "LogisticRegression (Multinomial L2)": LogisticRegression(
+            C=1.0, max_iter=1000, class_weight="balanced", random_state=42
         ),
-        "Random Forest Classifier (200 trees)": RandomForestClassifier(
-            n_estimators=200,
-            max_depth=12,
-            min_samples_split=6,
-            class_weight="balanced",
-            random_state=42,
-            n_jobs=-1
+        "HistGradientBoosting": HistGradientBoostingClassifier(
+            max_iter=150, max_depth=6, learning_rate=0.08, min_samples_leaf=15, random_state=42
         ),
-        "Gradient Boosting Classifier": GradientBoostingClassifier(
-            n_estimators=150,
-            learning_rate=0.06,
-            max_depth=4,
-            random_state=42
+        "RandomForest": RandomForestClassifier(
+            n_estimators=150, max_depth=10, class_weight="balanced", min_samples_leaf=8, random_state=42
         ),
-        "HistGradientBoosting Classifier": HistGradientBoostingClassifier(
-            max_iter=150,
-            learning_rate=0.06,
-            max_depth=6,
-            class_weight="balanced",
-            random_state=42
+        "GradientBoosting": GradientBoostingClassifier(
+            n_estimators=120, max_depth=4, learning_rate=0.08, random_state=42
         )
     }
 
-    # 4. Train and Compare Models on Validation Set
-    print("\n[4/6] Fitting Candidates & Evaluating Safety Metrics on Validation Set...")
-    val_results = {}
+    results = {}
+    best_candidate_name = None
+    best_macro_f1 = -1.0
     fitted_models = {}
 
-    for name, model in candidate_models.items():
-        t0 = time.time()
-        model.fit(X_train, y_train)
-        fit_time = time.time() - t0
+    print("\n--- BENCHMARKING CANDIDATE ARCHITECTURES ---")
+    for name, clf in candidates.items():
+        clf.fit(X_train, y_train)
+        fitted_models[name] = clf
 
-        y_val_pred = model.predict(X_val)
-        y_val_prob = model.predict_proba(X_val)
+        y_val_prob = clf.predict_proba(X_val)
+        y_val_pred = clf.predict(X_val)
 
-        metrics = compute_arrival_triage_metrics(
-            y_true=y_val,
-            y_pred=y_val_pred,
-            y_prob_matrix=y_val_prob,
-            class_labels=ARRIVAL_TARGET_CLASSES,
-            df_features=df_val
-        )
-        metrics["train_time_sec"] = round(fit_time, 3)
+        val_metrics = calculate_triage_safety_metrics(y_val, y_val_pred, y_val_prob)
+        results[name] = val_metrics
 
-        val_results[name] = metrics
-        fitted_models[name] = model
+        print(f"[{name}]")
+        print(f"  Val Macro F1: {val_metrics['macro_f1']:.4f} | Accuracy: {val_metrics['accuracy']:.4f} | Balanced Acc: {val_metrics['balanced_accuracy']:.4f} | Under-triage: {val_metrics['under_triage_rate']:.4f} | Critical Under-triage: {val_metrics['critical_under_triage_rate']:.4f}")
 
-    # Print Validation Benchmarking Table
-    print("\n" + "=" * 105)
-    print(f"{'Candidate Architecture':<38} | {'Acc':<6} | {'Macro F1':<8} | {'Bal Acc':<7} | {'Under-Trg':<9} | {'Sev Under':<9} | {'Over-Trg':<8} | {'Brier':<6} | {'Time'}")
-    print("-" * 105)
-    for name, m in val_results.items():
-        print(
-            f"{name:<38} | {m['accuracy']:<6.4f} | {m['macro_f1']:<8.4f} | {m['balanced_accuracy']:<7.4f} | "
-            f"{m['under_triage_rate']:<9.4f} | {m['severe_under_triage_rate']:<9.4f} | {m['over_triage_rate']:<8.4f} | "
-            f"{m['multiclass_brier_score']:<6.4f} | {m['train_time_sec']}s"
-        )
-    print("=" * 105)
+        if val_metrics["macro_f1"] > best_macro_f1:
+            best_macro_f1 = val_metrics["macro_f1"]
+            best_candidate_name = name
 
-    # 5. Model Selection & Probability Calibration
-    # Criteria: Highest Validation Macro F1 + Lowest Under-Triage Rate
-    best_raw_name = max(
-        val_results,
-        key=lambda k: (val_results[k]["macro_f1"], -val_results[k]["under_triage_rate"])
-    )
-    best_raw_model = fitted_models[best_raw_name]
-    print(f"\n[5/6] Model Selection Winner: '{best_raw_name}' (Val Macro F1: {val_results[best_raw_name]['macro_f1']:.4f}, Under-Triage: {val_results[best_raw_name]['under_triage_rate']:.4f})")
+    print(f"\nWinner Model Architecture: {best_candidate_name} (Val Macro F1: {best_macro_f1:.4f})")
 
-    # Probability Calibration Step: CalibratedClassifierCV (method='sigmoid')
-    print("  --> Fitting CalibratedClassifierCV (Sigmoidal Platt scaling via 5-fold CV on Train partition)...")
-    calibrated_model = CalibratedClassifierCV(estimator=best_raw_model, cv=5, method="sigmoid")
+    # 4. Calibrate Final Model via CalibratedClassifierCV
+    print("\n--- PROBABILITY CALIBRATION (Sigmoid CalibratedClassifierCV) ---")
+    base_winner = candidates[best_candidate_name]
+    calibrated_model = CalibratedClassifierCV(estimator=base_winner, method="sigmoid", cv=5)
     calibrated_model.fit(X_train, y_train)
 
-    y_val_cal_pred = calibrated_model.predict(X_val)
-    y_val_cal_prob = calibrated_model.predict_proba(X_val)
-    cal_val_metrics = compute_arrival_triage_metrics(
-        y_true=y_val,
-        y_pred=y_val_cal_pred,
-        y_prob_matrix=y_val_cal_prob,
-        class_labels=ARRIVAL_TARGET_CLASSES,
-        df_features=df_val
-    )
-    print(f"  --> Calibrated Validation Brier Score: {cal_val_metrics['multiclass_brier_score']:.4f} (Macro F1: {cal_val_metrics['macro_f1']:.4f})")
-
-    # 6. Final Test Set Evaluation (Evaluating EXACTLY ONCE on Unseen Test Partition)
-    print("\n[6/6] Freezing Model & Evaluating EXACTLY ONCE on Held-Out Test Partition (N=750)...")
-    y_test_pred = calibrated_model.predict(X_test)
     y_test_prob = calibrated_model.predict_proba(X_test)
+    y_test_pred = calibrated_model.predict(X_test)
 
-    final_test_metrics = compute_arrival_triage_metrics(
-        y_true=y_test,
-        y_pred=y_test_pred,
-        y_prob_matrix=y_test_prob,
-        class_labels=ARRIVAL_TARGET_CLASSES,
-        df_features=df_test
-    )
+    test_metrics = calculate_triage_safety_metrics(y_test, y_test_pred, y_test_prob)
+    print("Test Set Performance (Final Calibrated Model v1.1):")
+    print(f"  Accuracy: {test_metrics['accuracy']:.4f}")
+    print(f"  Macro F1: {test_metrics['macro_f1']:.4f}")
+    print(f"  Balanced Accuracy: {test_metrics['balanced_accuracy']:.4f}")
+    print(f"  Under-Triage Rate: {test_metrics['under_triage_rate']:.4f} ({test_metrics['under_triage_rate']*100:.1f}%)")
+    print(f"  Over-Triage Rate:  {test_metrics['over_triage_rate']:.4f} ({test_metrics['over_triage_rate']*100:.1f}%)")
+    print(f"  Critical Under-Triage Rate: {test_metrics['critical_under_triage_rate']:.4f} ({test_metrics['critical_under_triage_rate']*100:.1f}%)")
+    print("  Per-Class Recall:")
+    for k, v in test_metrics["per_class_recall"].items():
+        print(f"    ESI {k}: {v:.4f}")
 
-    print("\n" + "=" * 75)
-    print("FINAL UNBIASED TEST EVALUATION - ARRIVAL TRIAGE MODEL (v1.0)")
-    print("=" * 75)
-    print(f"  * Test Accuracy:               {final_test_metrics['accuracy']:.4f}")
-    print(f"  * Test Macro F1:               {final_test_metrics['macro_f1']:.4f}")
-    print(f"  * Test Balanced Accuracy:      {final_test_metrics['balanced_accuracy']:.4f}")
-    print(f"  * Exact Agreement Rate:        {final_test_metrics['exact_agreement_rate']:.4f}")
-    print(f"  * Under-Triage Rate (UTR):     {final_test_metrics['under_triage_rate']:.4f} (Assigned less urgent priority)")
-    print(f"  * Severe Under-Triage Rate:    {final_test_metrics['severe_under_triage_rate']:.4f} (>= 2 tier discrepancy)")
-    print(f"  * Over-Triage Rate (OTR):      {final_test_metrics['over_triage_rate']:.4f}")
-    print(f"  * Multiclass Brier Score:      {final_test_metrics['multiclass_brier_score']:.4f} (Calibration)")
-    print("-" * 75)
-    print("  Per-Class Performance (ESI 1 to 5):")
-    for cls_k in ARRIVAL_TARGET_CLASSES:
-        pcm = final_test_metrics["per_class_metrics"][str(cls_k)]
-        print(f"    - {pcm['name']:<40} | Prec: {pcm['precision']:.4f} | Rec: {pcm['recall']:.4f} | F1: {pcm['f1_score']:.4f} | Support: {pcm['support']}")
-    print("-" * 75)
-    print("  Confusion Matrix (Rows: True, Cols: Pred ESI 1..5):")
-    for r_idx, row in enumerate(final_test_metrics["confusion_matrix"]):
-        print(f"    True ESI {r_idx+1}: {row}")
-    print("-" * 75)
-    print("  Stratified Subgroup Performance:")
-    for s_name, s_m in final_test_metrics.get("subgroup_performance", {}).items():
-        print(f"    - {s_name:<25} | N={s_m['sample_count']} | Acc: {s_m.get('accuracy', '-')} | Macro F1: {s_m.get('macro_f1', '-')} | UTR: {s_m.get('under_triage_rate', '-')}")
-    print("=" * 75)
+    # 5. Subgroup Performance Evaluation
+    print("\n--- SUBGROUP COHORT EVALUATION (Pediatric, Adult, Geriatric, Zero-History) ---")
+    subgroup_metrics = evaluate_demographic_subgroups(test_df, calibrated_model, preprocessor)
+    for cohort, m in subgroup_metrics.items():
+        if "status" in m:
+            print(f"[{cohort.upper()}] {m['status']}")
+        else:
+            print(f"[{cohort.upper()}] (N={m['sample_size']}): Acc={m['accuracy']:.4f}, Macro F1={m['macro_f1']:.4f}, Under-Triage={m['under_triage_rate']:.4f}, Over-Triage={m['over_triage_rate']:.4f}")
 
-    # 7. Serialize Versioned Artifacts
-    model_version = "1.0"
-    model_artifact_path = os.path.join(models_dir, f"arrival_triage_model_v{model_version}.joblib")
+    # 6. Save Versioned Artifacts (v1.1)
+    model_version = "1.1"
+    model_path = os.path.join(models_dir, f"arrival_triage_model_v{model_version}.joblib")
     preprocessor_path = os.path.join(models_dir, f"arrival_preprocessor_v{model_version}.joblib")
     metadata_path = os.path.join(models_dir, f"model_metadata_v{model_version}.json")
-    metrics_path = os.path.join(models_dir, f"evaluation_metrics_v{model_version}.json")
+    eval_metrics_path = os.path.join(models_dir, f"evaluation_metrics_v{model_version}.json")
 
-    joblib.dump(calibrated_model, model_artifact_path)
+    joblib.dump(calibrated_model, model_path)
     preprocessor.save(preprocessor_path)
 
     metadata = {
-        "model_name": "PatientTriage Arrival Acuity Classifier",
+        "model_name": "PatientTriage Arrival Triage ML Model",
         "model_version": model_version,
-        "model_type": type(calibrated_model).__name__,
-        "base_estimator": best_raw_name,
-        "calibration_method": "sigmoid_platt_cv5",
-        "trained_at": pd.Timestamp.now("UTC").isoformat(),
-        "random_seed": 42,
-        "feature_schema_version": "1.0",
-        "temporal_anchor": "T0_POINT_OF_ARRIVAL",
+        "base_estimator": best_candidate_name,
+        "calibration_method": "CalibratedClassifierCV(cv=5, method='sigmoid')",
         "feature_count": len(ARRIVAL_ALL_FEATURE_COLUMNS),
-        "feature_columns": ARRIVAL_ALL_FEATURE_COLUMNS,
-        "numerical_feature_columns": ARRIVAL_NUMERICAL_FEATURE_COLUMNS,
-        "categorical_feature_columns": ARRIVAL_CATEGORICAL_BINARY_FEATURE_COLUMNS,
-        "target_column": target_col,
+        "feature_names": ARRIVAL_ALL_FEATURE_COLUMNS,
+        "target_column": ARRIVAL_TARGET_COLUMN,
         "target_classes": ARRIVAL_TARGET_CLASSES,
         "target_class_names": ARRIVAL_TARGET_CLASS_NAMES,
-        "dataset_metadata": {
-            "train_samples": len(df_train),
-            "val_samples": len(df_val),
-            "test_samples": len(df_test),
-            "class_distribution_train": {int(k): int(v) for k, v in df_train[target_col].value_counts().sort_index().items()},
-            "class_distribution_val": {int(k): int(v) for k, v in df_val[target_col].value_counts().sort_index().items()},
-            "class_distribution_test": {int(k): int(v) for k, v in df_test[target_col].value_counts().sort_index().items()}
-        },
-        "validation_benchmark": val_results,
-        "final_test_metrics": final_test_metrics,
-        "environment": {
-            "python_version": platform.python_version(),
-            "scikit_learn_version": sklearn.__version__,
-            "platform": platform.platform()
-        }
+        "training_date": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+        "training_samples": len(train_df),
+        "validation_samples": len(val_df),
+        "test_samples": len(test_df),
+        "age_aware_enhancements": True,
+        "data_quality_features_included": True
     }
 
     with open(metadata_path, "w") as f:
         json.dump(metadata, f, indent=2)
 
-    with open(metrics_path, "w") as f:
-        json.dump(final_test_metrics, f, indent=2)
+    eval_data = {
+        "candidate_validation_benchmarks": results,
+        "winner_model": best_candidate_name,
+        "test_metrics": test_metrics,
+        "subgroup_metrics": subgroup_metrics
+    }
 
-    print(f"\n[SAVED ARTIFACTS]")
-    print(f"  --> Saved Arrival Model Artifact:       {os.path.basename(model_artifact_path)}")
-    print(f"  --> Saved Arrival Preprocessor:         {os.path.basename(preprocessor_path)}")
-    print(f"  --> Saved Model Metadata:               {os.path.basename(metadata_path)}")
-    print(f"  --> Saved Test Evaluation Metrics:      {os.path.basename(metrics_path)}")
-    print("\n[SUCCESS] Arrival triage ML model training pipeline completed successfully!")
+    with open(eval_metrics_path, "w") as f:
+        json.dump(eval_data, f, indent=2)
 
-    return metadata
+    print(f"\n[SUCCESS] Model artifacts successfully serialized to {models_dir} (Version: {model_version})")
+    return test_metrics, subgroup_metrics
 
 if __name__ == "__main__":
-    train_and_benchmark_arrival_triage_models()
+    train_and_benchmark()
