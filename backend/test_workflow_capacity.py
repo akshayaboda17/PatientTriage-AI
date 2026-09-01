@@ -101,8 +101,9 @@ class TestEDWorkflowAndCapacity(unittest.TestCase):
     # ==========================================
     def test_06_clinician_override_preserves_original_ai(self):
         """Overriding care priority records clinician decision without overwriting original AI prediction."""
-        # Find active encounter with AI evaluation
+        # Find active encounter with AI evaluation for doctor's hospital
         ai_risk = self.db.query(AIRiskAssessment).join(EDEncounter).filter(
+            EDEncounter.hospital_id == self.doc.hospital_id,
             EDEncounter.status.in_([EncounterStatusEnum.WAITING, EncounterStatusEnum.IN_TRIAGE, EncounterStatusEnum.IN_TREATMENT])
         ).first()
         self.assertIsNotNone(ai_risk)
@@ -143,6 +144,7 @@ class TestEDWorkflowAndCapacity(unittest.TestCase):
     def test_07_discharge_patient_removes_from_active_queue_and_frees_bed(self):
         """Discharging patient updates status to DISCHARGED, releases bed, and removes from active queue."""
         enc = self.db.query(EDEncounter).filter(
+            EDEncounter.hospital_id == self.doc.hospital_id,
             EDEncounter.status.in_([EncounterStatusEnum.WAITING, EncounterStatusEnum.IN_TRIAGE, EncounterStatusEnum.IN_TREATMENT])
         ).first()
         self.assertIsNotNone(enc)

@@ -93,7 +93,8 @@ def get_ed_encounters(
             ClinicalAlert.status.in_([AlertStatusEnum.UNACKNOWLEDGED, AlertStatusEnum.ACKNOWLEDGED])
         ).all()
 
-        wait_mins = int((now - enc.arrival_time).total_seconds() / 60) if enc.arrival_time else 0
+        is_waiting = (enc.status == EncounterStatusEnum.WAITING) and (enc.bed_number is None)
+        wait_mins = int((now - enc.arrival_time).total_seconds() / 60) if (enc.arrival_time and is_waiting) else 0
         triage_level = latest_triage.triage_level if latest_triage else (
             latest_ai_risk.predicted_triage_level if latest_ai_risk else 3
         )
@@ -108,30 +109,43 @@ def get_ed_encounters(
         # 1. Age Group
         age_group = AgeService.determine_age_group(patient.age if patient else None)
 
-        # 2. Wait-Time Safe Threshold Evaluation
-        wait_eval = HospitalConfigService.evaluate_wait_time(staff.hospital_id, triage_level, wait_mins)
-
-        # Automatic wait threshold breach alert generation (deduplicated)
-        if wait_eval["exceeded"] and enc.status == EncounterStatusEnum.WAITING:
-            has_wait_alert = any(a.alert_type == "SAFE_WAIT_THRESHOLD_EXCEEDED" for a in active_alerts)
-            if not has_wait_alert:
-                new_wait_alert = ClinicalAlert(
-                    alert_id=f"ALERT-WAIT-{uuid.uuid4().hex[:6].upper()}",
-                    hospital_id=staff.hospital_id,
-                    patient_id=enc.patient_id,
-                    encounter_id=enc.encounter_id,
-                    alert_type="SAFE_WAIT_THRESHOLD_EXCEEDED",
-                    severity=AlertSeverityEnum.CRITICAL if triage_level <= 2 else AlertSeverityEnum.HIGH,
-                    status=AlertStatusEnum.UNACKNOWLEDGED,
-                    detected_at=now,
-                    detection_source=DetectionSourceEnum.RULE_BASED,
-                    detection_rule_id="RULE-SAFE-WAIT-EXCEEDED-01",
-                    summary=f"🚨 REASSESSMENT REQUIRED: Waiting time ({wait_mins} min) exceeds safe threshold ({wait_eval['threshold_mins']} min) for ESI {triage_level}.",
-                    evidence=[{"parameter": "ED_WAIT_TIME", "threshold_mins": wait_eval["threshold_mins"], "wait_mins": wait_mins}]
-                )
-                db.add(new_wait_alert)
+        # 2. Wait-Time Safe Threshold Evaluation (ONLY for waiting patients who do not yet have a bed)
+        if is_waiting:
+            wait_eval = HospitalConfigService.evaluate_wait_time(staff.hospital_id, triage_level, wait_mins)
+            # Automatic wait threshold breach alert generation (deduplicated)
+            if wait_eval["exceeded"]:
+                has_wait_alert = any(a.alert_type == "SAFE_WAIT_THRESHOLD_EXCEEDED" for a in active_alerts)
+                if not has_wait_alert:
+                    new_wait_alert = ClinicalAlert(
+                        alert_id=f"ALERT-WAIT-{uuid.uuid4().hex[:6].upper()}",
+                        hospital_id=staff.hospital_id,
+                        patient_id=enc.patient_id,
+                        encounter_id=enc.encounter_id,
+                        alert_type="SAFE_WAIT_THRESHOLD_EXCEEDED",
+                        severity=AlertSeverityEnum.CRITICAL if triage_level <= 2 else AlertSeverityEnum.HIGH,
+                        status=AlertStatusEnum.UNACKNOWLEDGED,
+                        detected_at=now,
+                        detection_source=DetectionSourceEnum.RULE_BASED,
+                        detection_rule_id="RULE-SAFE-WAIT-EXCEEDED-01",
+                        summary=f"🚨 REASSESSMENT REQUIRED: Waiting time ({wait_mins} min) exceeds safe threshold ({wait_eval['threshold_mins']} min) for ESI {triage_level}.",
+                        evidence=[{"parameter": "ED_WAIT_TIME", "threshold_mins": wait_eval["threshold_mins"], "wait_mins": wait_mins}]
+                    )
+                    db.add(new_wait_alert)
+                    db.commit()
+                    active_alerts.append(new_wait_alert)
+        else:
+            hosp_cfg_dict = HospitalConfigService.get_config(staff.hospital_id)
+            threshold = (hosp_cfg_dict.get("safe_wait_thresholds_mins", {}) if isinstance(hosp_cfg_dict, dict) else getattr(hosp_cfg_dict, "safe_wait_thresholds_mins", {})).get(triage_level, 15)
+            wait_eval = {"threshold_mins": threshold, "exceeded": False, "reassessment_required": False}
+            # Automatically resolve any lingering wait alerts if patient is already in bed or in care
+            wait_alerts_to_resolve = [a for a in active_alerts if a.alert_type == "SAFE_WAIT_THRESHOLD_EXCEEDED"]
+            if wait_alerts_to_resolve:
+                for wa in wait_alerts_to_resolve:
+                    wa.status = AlertStatusEnum.RESOLVED
+                    wa.resolved_at = now
+                    wa.resolution_notes = f"Patient placed in care ({'Bed: ' + enc.bed_number if enc.bed_number else 'In Treatment'}). Waiting time concluded."
+                    active_alerts.remove(wa)
                 db.commit()
-                active_alerts.append(new_wait_alert)
 
         # 3. History Status
         history_status = SafetyService.classify_history_status(
@@ -250,7 +264,8 @@ def get_ed_encounters(
             "patient_gender": patient.gender if patient else None,
             "history_status": history_status.value,
             "arrival_time": enc.arrival_time.isoformat() if enc.arrival_time else None,
-            "wait_time_mins": wait_mins,
+            "wait_time_mins": wait_mins if is_waiting else None,
+            "is_waiting": is_waiting,
             "wait_evaluation": wait_eval,
             "status": enc.status.value,
             "waiting_status_text": waiting_status_text,
@@ -280,10 +295,10 @@ def get_ed_encounters(
     if is_surge:
         def surge_sort_key(x):
             safety_rank = 0 if x["safety_status"] == "ESCALATE" else (1 if x["safety_status"] == "REASSESS" else (2 if x["safety_status"] == "MONITOR" else 3))
-            return (safety_rank, x['triage_level'], -x['wait_time_mins'])
+            return (safety_rank, x['triage_level'], -(x['wait_time_mins'] or 0))
         sorted_queue = sorted(queue_list, key=surge_sort_key)
     else:
-        sorted_queue = sorted(queue_list, key=lambda x: (x['triage_level'], -x['wait_time_mins']))
+        sorted_queue = sorted(queue_list, key=lambda x: (x['triage_level'], -(x['wait_time_mins'] or 0)))
 
     return {
         "queue": sorted_queue,

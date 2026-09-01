@@ -309,8 +309,22 @@ export const TriageCategoriesView = ({ onSelectPatient, onReviewPatient, onOpenR
                           {/* Bottom Meta Strip */}
                           <div className="flex items-center justify-between pt-1 border-t border-slate-800/60 text-[10px] text-slate-500 font-mono">
                             <div className="flex items-center gap-1">
-                              <Clock className="w-3 h-3 text-slate-500" />
-                              <span>Time Waiting: <strong>{patient.wait_time_mins || 0} mins</strong></span>
+                              {patient.bed_number ? (
+                                <>
+                                  <Bed className="w-3 h-3 text-emerald-400" />
+                                  <span className="text-emerald-300">In Bed: <strong>{patient.bed_number}</strong></span>
+                                </>
+                              ) : patient.status === 'IN_TREATMENT' || patient.status === 'IN_TRIAGE' ? (
+                                <>
+                                  <Activity className="w-3 h-3 text-indigo-400" />
+                                  <span className="text-indigo-300">In Active Care</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Clock className="w-3 h-3 text-slate-500" />
+                                  <span>Time Waiting: <strong>{patient.wait_time_mins || 0} mins</strong></span>
+                                </>
+                              )}
                             </div>
                             <SafetyStatusBadge status={patient.safety_status} />
                           </div>

@@ -169,10 +169,11 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
   // Operational metrics
   const activeEncounters = encounters.filter(e => e.status !== 'DISCHARGED');
   const totalInED = activeEncounters.length;
-  const waitingCount = activeEncounters.filter(e => e.status === 'WAITING').length;
-  const inCareCount = activeEncounters.filter(e => e.status === 'IN_TREATMENT' || e.status === 'IN_TRIAGE').length;
+  const waitingPatients = activeEncounters.filter(e => e.status === 'WAITING' && !e.bed_number);
+  const waitingCount = waitingPatients.length;
+  const inCareCount = activeEncounters.filter(e => e.status === 'IN_TREATMENT' || e.status === 'IN_TRIAGE' || Boolean(e.bed_number)).length;
   const criticalCount = activeEncounters.filter(e => e.triage_level === 1 || e.triage_level === 2).length;
-  const reassessmentCount = activeEncounters.filter(e => e.wait_evaluation?.reassessment_required || e.safety_status === 'REASSESS').length;
+  const reassessmentCount = activeEncounters.filter(e => (e.status === 'WAITING' && !e.bed_number && (e.wait_evaluation?.reassessment_required || e.wait_eval?.exceeded)) || e.safety_status === 'REASSESS').length;
 
   // Capacity & Staff numbers
   const totalBeds = capacityData?.beds?.total_beds ?? 25;
@@ -180,9 +181,9 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
   const onDutyStaffList = capacityData?.staff?.staff_list || [];
   const onDutyStaffCount = onDutyStaffList.length;
 
-  // Average wait time
-  const avgWait = totalInED > 0
-    ? Math.round(activeEncounters.reduce((acc, curr) => acc + (curr.wait_time_mins || 0), 0) / totalInED)
+  // Average wait time (only for patients waiting for care space)
+  const avgWait = waitingPatients.length > 0
+    ? Math.round(waitingPatients.reduce((acc, curr) => acc + (curr.wait_time_mins || 0), 0) / waitingPatients.length)
     : 0;
 
   // Acuity breakdown
@@ -532,13 +533,10 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
                     const isOverridden = Boolean(patient.is_overridden);
                     const originalAiLevel = patient.original_ai_level || patient.ai_risk?.predicted_triage_level || patient.triage_level;
                     const origAiMeta = getPriorityMeta(originalAiLevel);
-                    const isSafeWaitExceeded = Boolean(patient.wait_eval?.exceeded || patient.wait_evaluation?.reassessment_required);
-                    const hasDeterioration = (patient.active_alert_count > 0) || (patient.alerts && patient.alerts.length > 0);
-                    const isExplainExpanded = expandedExplainId === patient.encounter_id;
-                    const isDischarged = patient.status === 'DISCHARGED';
-
                     // Bed & Space Presentation (Requirement 7 & 9)
                     const hasAssignedBed = Boolean(patient.bed_number);
+                    const isWaiting = patient.status === 'WAITING' && !hasAssignedBed;
+                    const isSafeWaitExceeded = isWaiting && Boolean(patient.wait_eval?.exceeded || patient.wait_evaluation?.reassessment_required);
                     const bedDisplayText = hasAssignedBed ? `Bed: ${patient.bed_number}` : 'Bed: Not Assigned · Waiting for Available Bed';
 
                     // Status Text
@@ -601,10 +599,22 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
                           <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
                             <span>#{patient.encounter_id}</span>
                             <span className="text-slate-600">·</span>
-                            <span className="flex items-center gap-1">
-                              <Clock className="w-3 h-3 text-slate-500" />
-                              {patient.wait_time_mins || 0} min wait
-                            </span>
+                            {isWaiting ? (
+                              <span className="flex items-center gap-1 text-slate-400">
+                                <Clock className="w-3 h-3 text-slate-500" />
+                                {patient.wait_time_mins || 0} min wait
+                              </span>
+                            ) : hasAssignedBed ? (
+                              <span className="flex items-center gap-1 text-emerald-400 font-semibold">
+                                <Bed className="w-3.5 h-3.5 text-emerald-400" />
+                                {patient.bed_number}
+                              </span>
+                            ) : (
+                              <span className="flex items-center gap-1 text-indigo-400 font-semibold">
+                                <Activity className="w-3.5 h-3.5 text-indigo-400" />
+                                In Care
+                              </span>
+                            )}
                           </div>
                         </div>
 
