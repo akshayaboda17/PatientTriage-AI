@@ -2,6 +2,7 @@
 
 ### AI-Powered Emergency Department Triage & Clinical Decision Support
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![React 19](https://img.shields.io/badge/Frontend-React_19-61DAFB.svg?logo=react&logoColor=black)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Build-Vite_8-646CFF.svg?logo=vite&logoColor=white)](https://vitejs.dev/)
@@ -11,87 +12,53 @@
 
 ---
 
-> [!CAUTION]
-> **Advisory Clinical Decision Support Prototype Notice**
-> **PatientTriage.ai is an experimental clinical decision-support (CDS) prototype developed for technical demonstration and research evaluation.**
-> It does **NOT** provide autonomous medical diagnoses, definitive triage assignments, or independent medical treatments. The software does not replace the professional clinical judgment, physical examination, or diagnostic decisions of licensed emergency physicians, triage nurses, or certified healthcare personnel. All AI recommendations are advisory and subject to mandatory human-in-the-loop review.
+> **Clinical Decision Support Notice**  
+> PatientTriage.ai is an intelligent clinical decision-support (CDS) platform engineered to assist qualified emergency healthcare professionals. It does **not** make autonomous medical diagnoses, issue definitive triage mandates, or replace the clinical judgment, physical examination, or diagnostic decisions of licensed emergency physicians or triage nurses. All AI predictions, risk scores, and alert flags are strictly advisory and require human-in-the-loop oversight.
 
 ---
 
-## Table of Contents
+## Overview
 
-- [1. Project Overview](#1-project-overview)
-- [2. Problem Statement](#2-problem-statement)
-- [3. Key Objectives](#3-key-objectives)
-- [4. Key Features](#4-key-features)
-- [5. AI/ML Architecture](#5-aiml-architecture)
-- [6. ML Pipeline](#6-ml-pipeline)
-- [7. Feature Engineering](#7-feature-engineering)
-- [8. Dataset](#8-dataset)
-- [9. Model Performance](#9-model-performance)
-- [10. Explainability](#10-explainability)
-- [11. Uncertainty & Safety](#11-uncertainty--safety)
-- [12. ED Workflow](#12-ed-workflow)
-- [13. Surge Workflow](#13-surge-workflow)
-- [14. Hospital Scalability](#14-hospital-scalability)
-- [15. Patient Data Privacy & Security](#15-patient-data-privacy--security)
-- [16. Technology Stack](#16-technology-stack)
-- [17. Project Structure](#17-project-structure)
-- [18. Installation](#18-installation)
-- [19. Environment Variables](#19-environment-variables)
-- [20. Running the Application](#20-running-the-application)
-- [21. Demo Scenario](#21-demo-scenario)
-- [22. Simulated Data Disclaimer](#22-simulated-data-disclaimer)
-- [23. Testing](#23-testing)
-- [24. Limitations](#24-limitations)
-- [25. Future Work](#25-future-work)
-- [26. Contribution / Development Notes](#26-contribution--development-notes)
-- [27. License](#27-license)
+**PatientTriage.ai** is an emergency department operations and clinical intelligence platform that pairs machine learning risk stratification with continuous physiological monitoring. Built for high-volume, resource-constrained hospital emergency rooms, the platform assists triage nurses and attending physicians in managing the intake bottleneck, prioritizing care by genuine medical acuity, and preventing unmonitored waiting room decompensation.
+
+Modern emergency departments face severe operational gridlock, unpredictable patient surges, and presentations that range from mild trauma to catastrophic occult shock. PatientTriage.ai tackles these challenges at point of intake ($T_0$) by computing calibrated 5-level Emergency Severity Index (ESI) probability distributions, deriving physiological stress biomarkers, quantifying predictive uncertainty, and generating real-time SHAP factor attributions.
+
+Beyond intake, the system continuously tracks serial bedside observations ($T_0 \to T_1 \to \dots \to T_n$). A dedicated longitudinal deterioration model evaluates rates of change in vital signs—such as expanding shock index, silent hypoxemia, and blunted febrile responses—alerting clinical staff to impending physiological collapse before it becomes irreversible. Real-time capacity intelligence automatically allocates patients to appropriate care spaces (Resuscitation, ICU, Acute, and Fast Track) and flags genuine bed saturation only when capacity is exhausted.
+
+Every recommendation is transparent, explainable, and accountable: attending clinicians have full authority to override AI suggestions with mandatory documented justifications, while a tamper-evident audit trail preserves every interaction for hospital compliance.
 
 ---
 
-## 1. Project Overview
+## The Clinical Challenge
 
-**PatientTriage.ai** is an emergency department clinical decision-support and continuous physiological deterioration monitoring system. Designed for high-acuity, resource-constrained hospital emergency rooms, the platform assists triage nurses and emergency physicians during intake, waiting room observation, and care space allocation.
+Emergency departments operate in high-friction environments characterized by uncertainty and time pressure:
 
-Modern emergency departments face severe overcrowding, volatile surge surges, and variable clinical presentations. PatientTriage.ai addresses these operational bottlenecks by pairing calibrated machine learning models with clinical safety interlocks. Upon patient arrival ($T_0$), the system calculates predicted 5-level Emergency Severity Index (ESI) probability distributions, extracts point-of-care vital biomarkers, quantifies predictive uncertainty, and surfaces explainable factor attributions (SHAP).
-
-While patients remain in the emergency department, the platform continuously monitors serial vital signs ($T_0 \to T_1 \to \dots \to T_n$). A dedicated longitudinal deterioration model identifies early physiological decompensation—such as occult sepsis, silent hypoxemia, or widening shock index—triggering automated clinical alerts before catastrophic collapse. Real-time hospital capacity tracking automatically places patients into available care spaces and distinguishes genuine bed saturation from routine clinical delays.
-
-The platform enforces strict human-in-the-loop clinical governance: authorized clinicians can accept or override AI recommendations with mandatory clinical justification, and every recommendation, override, alert resolution, and status transition is recorded in an immutable, tamper-evident audit trail.
-
----
-
-## 2. Problem Statement
-
-Emergency departments operate under conditions of extreme operational stress and informational uncertainty:
-
-1. **High Patient Volume & Resource Scarcity**: Emergency rooms frequently exceed physical bed capacity and available staffing ratios, leading to prolonged waiting times and delayed clinical evaluation.
-2. **Heterogeneous Clinical Presentations**: Presenting complaints range from minor musculoskeletal trauma to life-threatening acute coronary syndromes and decompensated sepsis, often presenting with overlapping or misleading vital signs.
-3. **Incomplete Intake Data**: At point-of-arrival triage, nurses must make rapid classification decisions in under two minutes with incomplete medical histories, missing vital parameters, or first-time unregistered patients.
-4. **Ambiguous & Discordant Presentations**: Patients may report severe subjective pain despite normal baseline vitals, or conversely, geriatric patients with blunted febrile and cardiac responses may present with vague malaise while experiencing severe occult shock.
-5. **Age-Dependent Physiology**: Pediatric and geriatric vital signs differ significantly from standard adult baselines; applying uniform diagnostic thresholds risks catastrophic under-triage in vulnerable age cohorts.
-6. **Waiting Room Deterioration**: A significant proportion of adverse emergency outcomes occur after intake while patients wait unattended in waiting rooms, suffering silent physiological collapse.
-7. **Clinician Accountability & Overcrowding**: High cognitive loads increase diagnostic variability. Clinicians require fast, transparent decision support that preserves professional autonomy and maintains transparent auditability across hospital operational scales.
+- **Volume & Resource Constraints**: Rising patient visits collide with limited physical beds and nursing ratios, leading to dangerous waiting room delays.
+- **High Presentation Heterogeneity**: Patients present with diverse complaints spanning multiple organ systems, often obscuring acute life-threats behind non-specific symptoms.
+- **Imperfect Intake Information**: Triage nurses must categorize patients within two minutes using limited intake data, missing prior history, or unmeasured vitals.
+- **Ambiguous & Discordant Presentations**: Patients may report severe distress despite normal vital signs (e.g., early acute coronary syndrome), or present with mild malaise while in severe occult shock (common in elderly and immunocompromised patients).
+- **Age-Dependent Baseline Shifts**: Pediatric and geriatric vital signs differ substantially from healthy adult baselines; static diagnostic thresholds risk critical under-triage in vulnerable demographics.
+- **Silent Waiting Room Deterioration**: High-risk patients frequently decompensate while waiting for an available care space, turning treatable conditions into intensive care admissions.
+- **Clinician Cognitive Burden & Accountability**: High cognitive loads create diagnostic variability between clinicians. Teams need clear, advisory decision support that respects clinical autonomy and provides full auditability.
 
 ---
 
-## 3. Key Objectives
+## Key Objectives
 
-- **AI-Assisted Arrival Triage**: Deliver instant, calibrated 5-level ESI probability distributions at point of intake ($T_0$) to reduce triage variability.
-- **Safety-First Acuity Escalation**: Prevent fatal under-triage through deterministic clinical safety interlocks and asymmetric loss penalties.
-- **Explicit Uncertainty Quantification**: Distinguish high-confidence predictions from uncertain predictions caused by decision boundary proximity or data missingness.
-- **Explainable Clinical Predictions**: Provide transparent, point-of-care SHAP factor attributions explaining why specific risk levels were recommended.
-- **Continuous Deterioration Monitoring**: Evaluate repeated bedside observations to detect adverse longitudinal vital trajectories before clinical collapse.
-- **Capacity-Aware ED Operations**: Automatically map active encounters to hospital bed zones (Resuscitation, ICU, Acute, Fast Track) and indicate waiting states only when capacity is genuinely saturated.
-- **Clinician-in-the-Loop Governance**: Guarantee that AI recommendations remain purely advisory, giving attending physicians full override authority.
-- **Tamper-Resistant Audit Trail**: Maintain an immutable chronological record of every clinical assessment, override, alert lifecycle change, and system event.
-- **Surge-Resilient Workflow**: Maintain safe patient queue visibility and alert responsiveness during simulated $3\times$ volume surges without downgrading triage acuity.
-- **Configurable Hospital Scalability**: Support small community facilities, regional suburban emergency rooms, and large trauma centers with scalable bed profiles.
+- **Standardized Intake Risk Stratification**: Deliver rapid, calibrated ESI acuity predictions at intake ($T_0$) to reduce triage subjectivity.
+- **Safety-First Acuity Escalation**: Prevent under-triage through deterministic clinical safety interlocks and conservative probability calibration.
+- **Transparent Uncertainty Quantification**: Clearly differentiate high-confidence assessments from uncertain cases triggered by missing data or ambiguous presentations.
+- **Point-of-Care Explainability**: Surface the exact physiological factors and biomarkers that influenced the model's recommendations using SHAP.
+- **Continuous Deterioration Surveillance**: Analyze longitudinal bedside vital trends to detect early sepsis, respiratory fatigue, and cardiovascular collapse.
+- **Dynamic Capacity Management**: Map active patients to available physical care spaces and signal waiting states only when capacity is truly saturated.
+- **Clinician-in-the-Loop Governance**: Keep clinicians in complete command with seamless review, override capabilities, and documented justifications.
+- **Immutable Clinical Audit Logging**: Maintain a cryptographically tracked, role-governed audit trail across the entire patient journey.
+- **Surge-Resilient ED Operations**: Ensure clinical stability and prioritization during multi-casualty or volume surges without artificial down-triaging.
+- **Scalable Hospital Multi-Tenancy**: Provide isolated facility configurations for small community EDs, suburban general hospitals, and large trauma centers.
 
 ---
 
-## 4. Key Features
+## Core Capabilities
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
@@ -105,83 +72,83 @@ Emergency departments operate under conditions of extreme operational stress and
 └─────────────────────────┴─────────────────────────┴────────────────────────────────────┘
 ```
 
-### A. Patient Intake
-- **Demographics & Identification**: Captures patient name, age, gender, arrival mode (Ambulance, Walk-in, Wheelchair), and automatically generates facility-scoped Medical Record Numbers (MRN) and Encounter IDs.
-- **Chief Complaint & Clinical Negation**: Parses presenting complaints and medical history while filtering clinical negations (e.g., *"denies chest pain"*, *"no dyspnea"*), preventing negated symptoms from inflating cardiac or respiratory acuity.
-- **Bedside Vital Signs Entry**: Accepts Heart Rate (HR), Systolic Blood Pressure (SBP), Diastolic Blood Pressure (DBP), Respiratory Rate (RR), Oxygen Saturation ($\text{SpO}_2$), Body Temperature, Glasgow Coma Scale (GCS), and Pain Score (0–10).
-- **History & Allergies Classification**: Categorizes history availability into *History Available*, *Partial History*, or *Zero History / First Visit*, ensuring missing history is never falsely assumed to indicate a healthy baseline.
+### Patient Intake & Registration
+- **Demographics & Identification**: Captures patient name, age, biological sex, arrival mode (Ambulance, Walk-in, Wheelchair), and automatically provisions facility-scoped MRNs and Encounter IDs.
+- **Chief Complaint & Clinical Negation Parsing**: Extracts presenting complaints while filtering clinical negations (*"denies chest pain"*, *"no dyspnea"*), preventing denied symptoms from inflating cardiac or respiratory acuity.
+- **Bedside Vital Signs Capture**: Records Heart Rate (HR), Systolic Blood Pressure (SBP), Diastolic Blood Pressure (DBP), Respiratory Rate (RR), Oxygen Saturation ($\text{SpO}_2$), Body Temperature, Glasgow Coma Scale (GCS), and Pain Score (0–10).
+- **History & Allergies Differentiation**: Categorizes medical history into *History Documented*, *Partial History*, or *Zero Prior History / First Visit*, ensuring absent history is never treated as a verified healthy baseline.
 
-### B. AI/ML Triage
-- **Calibrated Multi-Class Probability**: Computes discrete probability vectors $[P(\text{ESI}_1), P(\text{ESI}_2), P(\text{ESI}_3), P(\text{ESI}_4), P(\text{ESI}_5)]$ strictly summing to $1.0$.
-- **Acuity Stratification**: Maps probabilistic risk to standard Emergency Severity Index categories:
+### AI & Machine Learning Triage
+- **Calibrated Multi-Class Probability**: Produces calibrated discrete probabilities across all five ESI levels $[P(\text{ESI}_1), P(\text{ESI}_2), P(\text{ESI}_3), P(\text{ESI}_4), P(\text{ESI}_5)]$ strictly summing to $1.0$.
+- **Acuity Stratification**: Maps risk probabilities to standard Emergency Severity Index levels:
   - **ESI 1**: *Critical — Immediate Care (Resuscitation)*
   - **ESI 2**: *Emergency — Immediate Assessment*
   - **ESI 3**: *Urgent — Prompt Assessment*
   - **ESI 4**: *Less Urgent*
   - **ESI 5**: *Non-Urgent*
-- **Biomarker Derivation**: Calculates Shock Index ($\text{HR}/\text{SBP}$), Modified Shock Index, Pulse Pressure ($\text{SBP} - \text{DBP}$), Mean Arterial Pressure (MAP), quick Sequential Organ Failure Assessment (qSOFA), and Modified Early Warning Score (MEWS).
-- **Uncertainty Tiers**: Grades predictions into **HIGH**, **MODERATE**, or **LOW** confidence based on normalized Shannon entropy, boundary margin, and feature missingness.
-- **Explainability Drawer**: Displays top physiological positive and negative contributors directly within the dashboard card.
+- **Biomarker Synthesis**: Computes real-time physiological indicators including Shock Index ($\text{HR}/\text{SBP}$), Modified Shock Index, Pulse Pressure, Mean Arterial Pressure (MAP), quick SOFA (qSOFA), and Modified Early Warning Score (MEWS).
+- **Multi-Tier Confidence**: Classifies predictions into **HIGH**, **MODERATE**, or **LOW** confidence based on normalized Shannon entropy, boundary margin, and data missingness.
+- **Inline Explainability Drawer**: Displays positive and negative physiological feature weights directly within each patient card on the dashboard.
 
-### C. ED Active Queue
-- **Acuity-Sorted Queue**: Displays all active emergency department patients ordered by clinical severity, physiological deterioration risk, and elapsed waiting time.
-- **Filter Tabs**: Instant filtering by *All Active*, *Waiting*, *In Care*, *Reassessment Required*, *High Priority (ESI 1-2)*, *Critical (ESI 1)*, and *Discharged*.
-- **Safe Wait-Time Tracking**: Tracks elapsed waiting time against protocolized ESI maximum safe thresholds (ESI 1: 0m, ESI 2: 15m, ESI 3: 45m, ESI 4: 90m, ESI 5: 120m).
-- **Automated Reassessment Triggers**: Visual amber alert prompts when a patient's wait duration exceeds their acuity threshold.
+### Active ED Queue Management
+- **Acuity-Sorted Queue**: Ranks active patients dynamically by clinical severity, physiological deterioration risk, and elapsed wait time.
+- **Smart Filtering**: One-click views for *All Active*, *Waiting*, *In Care*, *Reassessment Required*, *High Priority (ESI 1-2)*, *Critical (ESI 1)*, and *Discharged*.
+- **Safe Wait-Time Surveillance**: Tracks wait duration against established ESI safety limits (ESI 1: 0m, ESI 2: 15m, ESI 3: 45m, ESI 4: 90m, ESI 5: 120m).
+- **Automated Reassessment Alerts**: Highlights overdue patients with amber warning prompts when safe wait windows expire.
 
-### D. Clinician Override
-- **Advisory AI Model**: AI recommendations are clearly marked as clinical guidance; they do not dictate care.
-- **Physician Review Workspace**: Dedicated interface for attending physicians (`DOC001`) to review intake data, AI probability spreads, SHAP attributions, and enter clinical decisions.
-- **Immutable Override Preservation**: When a clinician changes a triage level (e.g., ESI 2 to ESI 3), the original AI recommendation is immutably preserved alongside the clinician's assigned level and mandatory documented justification.
+### Clinician Review & Override
+- **Advisory Clinical Workflow**: AI outputs are framed as advisory recommendations; they never finalize clinical status autonomously.
+- **Physician Review Workspace**: Dedicated interface for emergency physicians to review intake vitals, probability spreads, and SHAP attributions before signing off on clinical decisions.
+- **Immutable Override Tracking**: When an attending clinician overrides a triage level (e.g., modifying an AI-suggested ESI 2 to ESI 3), the original AI recommendation remains permanently preserved alongside the clinician's decision and mandatory clinical rationale.
 
-### E. Patient Lifecycle
-- **Workflow Progression**:
-  $$\text{Arrival Intake} \longrightarrow \text{Care Space Allocation (In Care)} \longrightarrow \text{Clinical Treatment} \longrightarrow \text{Discharge / Transfer}$$
-- **Discharge Mechanics**: Discharging a patient releases their assigned bed, resolves open active alerts, and removes them from the active queue while retaining all clinical records and audit logs for medical record compliance.
+### Full Patient Lifecycle
+- **Care Progression**:
+  $$\text{Intake} \longrightarrow \text{Care Space Placement (In Care)} \longrightarrow \text{Clinical Care} \longrightarrow \text{Discharge / Disposition}$$
+- **Discharge Mechanics**: Discharging a patient releases their assigned care space, resolves active clinical alerts, and removes them from active queue views while preserving all longitudinal records for hospital compliance.
 
-### F. Capacity Management
-- **Structured Bed Zones**: Standardized bed layout reflecting real hospital departments:
+### Capacity & Care Space Allocation
+- **Structured Bed Mapping**: Models real emergency department operational zones:
   - **Resuscitation Bays (`RESUS-01`, `RESUS-02`)**: Equipped for ESI 1 resuscitation.
   - **Critical Care / ICU Bays (`ICU-01`, `ICU-02`)**: ESI 2 emergent and deteriorating cases.
   - **Acute Care Beds (`BED-01` to `BED-17`)**: ESI 2–4 urgent presentations.
-  - **Fast Track Chairs/Beds (`FT-01` to `FT-04`)**: ESI 4–5 low-acuity presentations.
-- **Acuity-Aware Auto-Assignment**: When beds are available, active patients are automatically allocated appropriate beds and placed in `IN_TREATMENT` (**"IN CARE"**).
-- **Capacity-Saturated Waiting**: Patients only enter the `WAITING` state (`"WAITING FOR AVAILABLE CARE SPACE"`) when 100% of configured beds are occupied.
-- **Bed Turnover**: Discharging an in-bed patient instantly admits the highest-priority waiting patient into the newly freed care space.
+  - **Fast Track Chairs/Beds (`FT-01` to `FT-04`)**: ESI 4–5 ambulatory patients.
+- **Automated Bed Allocation**: As long as beds are available, active patients are assigned appropriate care spaces and placed in `IN_TREATMENT` (**"IN CARE"**).
+- **Capacity-Saturated Waiting**: Patients only enter the `WAITING` status (`"WAITING FOR AVAILABLE CARE SPACE"`) when all hospital beds are genuinely occupied.
+- **Bed Turnover**: Discharging a patient immediately admits the highest-priority waiting patient into the vacated bed.
 
-### G. Surge Mode Operations
-- **Simulated 3× Volume Influx**: Simulates disaster or multi-casualty incidents by tripling expected arrival rates.
-- **Surge Queue Prioritization**: Automatically surfaces unstable (`ESCALATE`) and overdue (`REASSESS`) patients to the top of the queue.
-- **Zero Silent Downgrading**: Enforces that clinical acuity is never reduced to create artificial capacity during surge conditions.
+### Surge Operations
+- **Simulated 3× Surge Mode**: Emulates disaster influxes or mass-casualty events by tripling incoming patient arrival rates.
+- **Dynamic Surge Queue Prioritization**: Automatically surfaces unstable (`ESCALATE`) and overdue (`REASSESS`) patients to the top of the queue.
+- **Strict Acuity Preservation**: Enforces that clinical acuity is never artificially downgraded to manufacture bed availability during surge conditions.
 
-### H. Audit & Governance
-- **Tamper-Evident Chronological Logs**: Every intake, vital entry, vital correction, AI inference, alert generation, alert resolution, physician review, override, and discharge produces a cryptographically identified audit log entry.
-- **Zero PII Exposure**: Audit log metadata sanitizes passwords, session tokens, and unnecessary personal identifiers.
-- **Role-Based Audit Access**: Restricted to authorized clinical directors and hospital administrators.
+### Audit Trail & Governance
+- **Chronological Event Logging**: Every registration, vital entry, observation correction, AI inference, alert generation, physician override, and discharge generates an immutable audit record.
+- **Privacy Protection**: Automatically sanitizes passwords, session tokens, and unnecessary personal data from audit payloads.
+- **Role-Based Audit Access**: Restricts compliance log views to authorized Clinical Directors and Hospital Administrators.
 
-### I. Role-Based Access Control (RBAC) & Security
-- **Multi-Tenant Facility Isolation**: Strict database-level isolation ensuring staff from Hospital A (`DEMO001`) can never access records or encounters from Hospital B (`METRO002`).
+### Role-Based Access Control (RBAC) & Security
+- **Multi-Tenant Facility Isolation**: Enforces facility-level tenancy (`hospital_id`), guaranteeing that staff from Hospital A cannot access records or patient queues from Hospital B.
 - **5 Staff Roles**:
   - `HOSPITAL_ADMIN`: Facility configuration, staff provisioning, audit inspection.
-  - `CLINICAL_DIRECTOR`: Clinical policy, surge mode activation, protocol monitoring.
-  - `EMERGENCY_PHYSICIAN`: Clinical review workspace, diagnostic orders, AI overrides, patient discharge.
+  - `CLINICAL_DIRECTOR`: Clinical protocol management, surge mode activation.
+  - `EMERGENCY_PHYSICIAN`: Physician review workspace, AI overrides, diagnostic orders, patient discharge.
   - `TRIAGE_NURSE`: Patient intake, bedside vital entry, observation corrections, alert acknowledgment.
   - `EMERGENCY_TECHNICIAN`: Vital signs capture, patient transport, supportive care.
-- **Password Security**: PBKDF2-HMAC-SHA256 password hashing with 100,000 iterations and cryptographic salts.
-- **Brute Force Protection**: Sliding-window rate limiter blocking IP/staff accounts exceeding 5 failed login attempts per minute (HTTP 429).
+- **Password Security**: PBKDF2-HMAC-SHA256 password hashing with 100,000 iterations and unique cryptographic salts.
+- **Brute Force Defense**: In-memory sliding window rate limiter blocking accounts exceeding 5 failed login attempts per minute (HTTP 429).
 
 ---
 
-## 5. AI/ML Architecture
+## System Architecture & ML Engines
 
-PatientTriage.ai implements two distinct machine learning models operating at different temporal stages of the emergency workflow:
+PatientTriage.ai employs two complementary machine learning engines operating across distinct phases of the emergency encounter:
 
 ```mermaid
 flowchart TD
     subgraph "MODEL 1: ARRIVAL TRIAGE CLASSIFIER (T0)"
         A1[Patient Arrival at Intake] --> A2[Point-of-Care Bedside Vitals & Complaint]
         A2 --> A3[Data Quality & Negation Filter]
-        A3 --> A4[T0 Feature Extraction: 37 Features]
+        A3 --> A4[T0 Feature Vector: 37 Features]
         A4 --> A5[Calibrated Multi-Class Classifier: v1.1]
         A5 --> A6[5-Class ESI Probability Spread]
         A6 --> A7[Uncertainty Engine: Entropy & Margin]
@@ -209,21 +176,21 @@ flowchart TD
     end
 ```
 
-### Model Distinction Summary
+### Model Architecture Comparison
 
-| Attribute | Model 1: Arrival Triage Classifier | Model 2: Longitudinal Deterioration Model |
+| Dimension | Model 1: Arrival Triage Classifier | Model 2: Longitudinal Deterioration Detector |
 | :--- | :--- | :--- |
-| **Temporal Anchor** | Point of Arrival ($T_0$ only) | Sequential Observations ($T_0 \to T_1 \to \dots \to T_n$) |
-| **Input Features** | 37 Intake Features (Vitals, Negated Complaint, Demographics) | 48 Temporal Features (Deltas, Velocities, Slopes, Shock Index) |
-| **Prediction Target** | 5-Level ESI Acuity ($P(\text{ESI}_1) \dots P(\text{ESI}_5)$) | 24-Hour Composite Critical Outcome (ICU, Death, Intubation) |
-| **Model Engine** | Calibrated Multi-Class Classifier (v1.1) | Calibrated Logistic Regression with Sigmoid Scaling (v1.0) |
-| **Safety Net** | Deterministic Vitals Interlocks (Catastrophic vitals $\to$ ESI 1) | Severe Shock Index ($\ge 1.3$) & Rapid $\text{SpO}_2$ Desaturation Alert |
+| **Temporal Scope** | Intake Point of Presentation ($T_0$ only) | Serial Bedside Observations ($T_0 \to T_1 \dots T_n$) |
+| **Feature Space** | 37 Intake Features (Vitals, Demographics, Negated Chief Complaint) | 48 Trajectory Features (Deltas, Velocities, Slopes, Rolling Vitals) |
+| **Prediction Target** | 5-Level ESI Acuity Distribution ($P(\text{ESI}_1) \dots P(\text{ESI}_5)$) | 24-Hour Composite Critical Outcome (ICU, Intubation, Mortality) |
+| **Primary Algorithm** | Multi-Class Calibrated Classifier (v1.1) | Calibrated Logistic Regression with Sigmoid Scaling (v1.0) |
+| **Safety Interlocks** | Catastrophic Vitals Override ($\text{SpO}_2 < 85\%$, $\text{SBP} < 70$) | Severe Shock Index ($\ge 1.3$) & Rapid Desaturation Alerts |
 
 ---
 
-## 6. ML Pipeline
+## Machine Learning Pipeline
 
-The repository contains an end-to-end clinical machine learning engineering pipeline in [`ml_pipeline/`](file:///c:/Users/aksha/Downloads/PatientTriage-AI/ml_pipeline):
+The project contains a clinical machine learning pipeline located in [`ml_pipeline/`](file:///c:/Users/aksha/Downloads/PatientTriage-AI/ml_pipeline):
 
 ```
 ml_pipeline/
@@ -236,22 +203,22 @@ ml_pipeline/
 ├── longitudinal_feature_extractor.py# 48-dimensional temporal trajectory feature builder
 ├── train_longitudinal_deterioration_model.py # Longitudinal model training pipeline
 ├── deterioration_inference_engine.py# Trajectory inference engine for serial vitals
-├── explainability_engine.py         # SHAP Tree/Linear feature attribution calculation
+├── explainability_engine.py         # SHAP Tree/Linear factor attribution engine
 └── mlops_service.py                 # Model registry, data drift tracking, and dataset versioning
 ```
 
-### Pipeline Lifecycle
-1. **Data Ingestion & Quality Validation** ([`data_quality_engine.py`](file:///c:/Users/aksha/Downloads/PatientTriage-AI/ml_pipeline/data_quality_engine.py)): Validates biological plausibility of vital signs (e.g., rejects $\text{SpO}_2 > 100\%$, $\text{HR} > 300$). Imputes missing values while generating boolean missingness indicator flags.
+### Engineering Workflow
+1. **Biological Range Validation** ([`data_quality_engine.py`](file:///c:/Users/aksha/Downloads/PatientTriage-AI/ml_pipeline/data_quality_engine.py)): Rejects non-physiological entries ($\text{SpO}_2 > 100\%$, $\text{HR} > 300\text{ bpm}$) and tracks missing fields with explicit boolean indicator variables.
 2. **Clinical Text Negation Filtering**: Uses clinical syntax rules to separate affirmed symptoms from negated symptoms (*"denies fever"*, *"no chest pain"*).
-3. **Anti-Leakage Group Partitioning**: Cohorts are strictly partitioned by `patient_id` (70% Train, 15% Validation, 15% Test) ensuring zero patient overlap across splits. Future clinical outcomes, discharge times, and post-triage interventions are strictly quarantined.
-4. **Probability Calibration**: Uses `CalibratedClassifierCV(method="sigmoid", cv=5)` to guarantee that output probabilities accurately reflect true empirical risk.
-5. **Model Artifact Versioning**: Models are serialized as `.joblib` artifacts alongside companion JSON metadata documents detailing feature order, training hyperparameters, and validation metrics.
+3. **Anti-Leakage Patient Grouping**: Partitions patient cohorts strictly by `patient_id` (70% Train, 15% Validation, 15% Test) to prevent data leakage across splits. Post-triage interventions, downstream diagnoses, and discharge times are strictly quarantined from features.
+4. **Probability Calibration**: Employs `CalibratedClassifierCV(method="sigmoid", cv=5)` to align predicted probabilities with empirical risk.
+5. **Model Registry & Metadata**: Models are serialized as `.joblib` binaries alongside JSON metadata capturing training hyperparameters, feature schemas, and validation metrics.
 
 ---
 
-## 7. Feature Engineering
+## Feature Engineering
 
-### Currently Implemented Features
+### Active Feature Space
 
 #### Model 1: Arrival Triage Classifier ($T_0$ — 37 Features)
 - **Demographics (6)**: `age`, `age_pediatric` ($<18$), `age_adult` ($18-64$), `age_geriatric` ($\ge 65$), `gender_male`, `gender_female`.
@@ -262,26 +229,26 @@ ml_pipeline/
 - **Missingness Indicator Flags (4)**: `temp_was_missing`, `gcs_was_missing`, `dbp_was_missing`, `pain_was_missing`.
 - **History & Allergy Flags (3)**: `has_known_history`, `is_zero_history`, `has_known_allergies`.
 
-#### Model 2: Longitudinal Deterioration Model ($T_0 \to T_n$ — 48 Features)
-- **Current Vitals ($T_n$)**: `hr`, `sbp`, `dbp`, `rr`, `spo2`, `temp`, `gcs`, `pain_score`.
+#### Model 2: Longitudinal Deterioration Detector ($T_0 \to T_n$ — 48 Features)
+- **Current Observation ($T_n$)**: `hr`, `sbp`, `dbp`, `rr`, `spo2`, `temp`, `gcs`, `pain_score`.
 - **Current Biomarkers ($T_n$)**: `shock_index`, `modified_shock_index`, `pulse_pressure`, `mean_arterial_pressure`, `qsofa_score`, `mews_score`.
 - **Sequential 1-Step Deltas ($T_n - T_{n-1}$)**: `delta_hr`, `delta_spo2`, `delta_rr`, `delta_sbp`, `delta_dbp`, `delta_temp`, `delta_gcs`, `delta_shock_index`.
-- **Per-Minute Rates of Change (Velocities)**: `velocity_hr`, `velocity_spo2`, `velocity_rr`, `velocity_sbp`, `velocity_shock_index`.
+- **Per-Minute Velocities**: `velocity_hr`, `velocity_spo2`, `velocity_rr`, `velocity_sbp`, `velocity_shock_index`.
 - **Cumulative Baseline Deltas ($T_n - T_0$)**: `baseline_hr_delta`, `baseline_spo2_delta`, `baseline_rr_delta`, `baseline_sbp_delta`.
 - **Rolling Trajectory Statistics**: `rolling_min_spo2`, `rolling_max_hr`, `rolling_max_rr`, `rolling_min_sbp`, `rolling_mean_hr`, `rolling_mean_spo2`.
 - **Trajectory Slopes**: `trajectory_slope_spo2`, `trajectory_slope_hr`, `trajectory_slope_rr`.
-- **Operational Context**: `observation_count`, `time_since_arrival_mins`, `minutes_since_prior_obs`, `initial_triage_level`, `is_pediatric`, `is_geriatric`, `age`, `gender_male`.
+- **Clinical Context**: `observation_count`, `time_since_arrival_mins`, `minutes_since_prior_obs`, `initial_triage_level`, `is_pediatric`, `is_geriatric`, `age`, `gender_male`.
 
-### Planned / Future Features
-- *Unstructured Clinical Notes Embeddings*: Dense vector representations extracted via ClinicalBERT / BioLinkBERT.
+### Extended Biomarker Roadmap
+- *Clinical NLP Embeddings*: Transformer-extracted representations from narrative nurse triage notes.
 - *Point-of-Care Laboratory Biomarkers*: High-sensitivity Troponin-I, venous blood lactate, blood gas analysis ($\text{pH}$, $\text{pCO}_2$), and creatinine.
 - *Continuous Waveform Photoplethysmography (PPG)*: Pulse rate variability and respiratory sinus arrhythmia telemetry.
 
 ---
 
-## 8. Dataset
+## Datasets & Validation Cohorts
 
-The system was developed and benchmarked using clinically calibrated synthetic patient cohorts generated to model real-world emergency distributions:
+The platform was developed and evaluated using clinically calibrated synthetic patient cohorts designed to replicate real-world emergency medicine distributions:
 
 | Dataset Partition | Filename | Records / Cohort Size | Clinical Target |
 | :--- | :--- | :--- | :--- |
@@ -289,33 +256,27 @@ The system was developed and benchmarked using clinically calibrated synthetic p
 | **Arrival Triage (Validation)** | `dataset_arrival_v1.0_val.csv` | 750 unique patients | 5-Level ESI Acuity (`1` to `5`) |
 | **Arrival Triage (Test)** | `dataset_arrival_v1.0_test.csv` | 750 unique patients | 5-Level ESI Acuity (`1` to `5`) |
 | **Longitudinal Trajectory (All)** | `dataset_longitudinal_v1.0.csv` | 15,749 observation slices (4,500 patients) | Composite 24h Critical Outcome |
-| **Demonstration Archetypes** | Synthetic Seeder (`/api/demo/seed`) | 20 Archetype Encounters | Clinical Challenge Scenarios |
+| **Clinical Demonstration Archetypes** | Synthetic Seeder (`/api/demo/seed`) | 20 Archetype Encounters | Clinical Challenge Scenarios |
 
-> [!NOTE]
-> **Data Grounding Disclosure**:
-> The current prototype uses simulated development data generated to reflect plausible physiological and clinical distributions. Performance metrics reported below reflect development testing on this simulated cohort and **must not be construed as prospective clinical validation**.
+*Note: The current prototype utilizes simulated development data. Performance metrics reflect testing on this cohort and must not be interpreted as prospective clinical trial results.*
 
 ---
 
-## 9. Model Performance
+## Benchmark Performance
 
-*All metrics reported below are verified directly from model evaluation artifacts in [`ml_pipeline/models/`](file:///c:/Users/aksha/Downloads/PatientTriage-AI/ml_pipeline/models).*
-
-### Model 1: Arrival Triage Classifier (Held-Out Test Set, $N = 750$)
-*Artifact: `ml_pipeline/models/arrival_triage/evaluation_metrics_v1.0.json`*
+### Model 1: Arrival Triage Classifier Evaluation (Held-Out Test Set, $N = 750$)
 
 - **Test Accuracy**: **78.40%**
 - **Under-Triage Rate (UTR)**: **2.00%** *(Critical safety metric: patients assigned lower acuity than true need)*
 - **Severe Under-Triage Rate ($\ge 2$ levels)**: **0.67%**
-- **Over-Triage Rate (OTR)**: **19.60%** *(Safe clinical conservatism)*
+- **Over-Triage Rate (OTR)**: **19.60%** *(Reflects safe clinical conservatism)*
 - **Multi-Class Brier Score**: **0.2977**
 - **Per-Class Sensitivity (Recall)**:
   - **ESI 1 (Resuscitation)**: **91.38%**
   - **ESI 3 (Urgent)**: **98.21%**
   - **ESI 4 (Less Urgent)**: **100.00%**
 
-### Model 2: Longitudinal Deterioration Model (Held-Out Test Set, $N = 2,388$ observation slices)
-*Artifact: `ml_pipeline/models/deterioration/evaluation_metrics_v1.0.json`*
+### Model 2: Longitudinal Deterioration Model Evaluation (Held-Out Test Set, $N = 2,388$ observation slices)
 
 - **ROC-AUC**: **0.8847**
 - **PR-AUC (Average Precision)**: **0.7985**
@@ -323,7 +284,7 @@ The system was developed and benchmarked using clinically calibrated synthetic p
 - **Precision**: **81.65%**
 - **False Negative Rate (FNR)**: **18.51%**
 - **Brier Score (Calibration)**: **0.1255**
-- **Accuracy**: **84.09%**
+- **Overall Accuracy**: **84.09%**
 - **Subgroup Sensitivity**:
   - Pediatric ($<18$ yrs): **96.15%** (ROC-AUC: 0.8066)
   - Geriatric ($\ge 65$ yrs): **85.99%** (ROC-AUC: 0.9076)
@@ -331,7 +292,7 @@ The system was developed and benchmarked using clinically calibrated synthetic p
 
 ---
 
-## 10. Explainability
+## Explainability & Interpretability (XAI)
 
 PatientTriage.ai integrates **SHAP (SHapley Additive exPlanations)** via [`explainability_engine.py`](file:///c:/Users/aksha/Downloads/PatientTriage-AI/ml_pipeline/explainability_engine.py) to provide point-of-care interpretability:
 
@@ -352,26 +313,24 @@ PatientTriage.ai integrates **SHAP (SHapley Additive exPlanations)** via [`expla
                [Accept Priority]   [Override Priority]
 ```
 
-> [!IMPORTANT]
-> **Clinical Association vs. Causality**:
-> SHAP values indicate the statistical association and feature weight utilized by the mathematical model to generate the probability distribution. They represent **correlation within the model's feature space**, not biological causality.
+*Note: SHAP values represent statistical feature attributions within the mathematical model's decision space, not biological causation.*
 
 ---
 
-## 11. Uncertainty & Safety
+## Clinical Safety & Uncertainty Quantification
 
-PatientTriage.ai implements a **Safety-First** uncertainty architecture ([`uncertainty_service.py`](file:///c:/Users/aksha/Downloads/PatientTriage-AI/backend/services/uncertainty_service.py) & [`safety_service.py`](file:///c:/Users/aksha/Downloads/PatientTriage-AI/backend/services/safety_service.py)):
+PatientTriage.ai implements a **Safety-First** clinical architecture ([`uncertainty_service.py`](file:///c:/Users/aksha/Downloads/PatientTriage-AI/backend/services/uncertainty_service.py) & [`safety_service.py`](file:///c:/Users/aksha/Downloads/PatientTriage-AI/backend/services/safety_service.py)):
 
-1. **Normalized Entropy Calculation**: Quantifies dispersion across the 5 class probabilities:
+1. **Normalized Entropy Metric**: Measures probability dispersion across the five acuity classes:
    $$H(P) = -\sum_{i=1}^5 p_i \log_5(p_i)$$
-2. **Decision Margin**: Measures distance between the top predicted class and second-highest class ($p_{(1)} - p_{(2)}$).
-3. **Missingness Penalty**: Adjusts confidence downward when essential bedside vitals are missing or imputed.
-4. **Safety Escalation Trigger**: When confidence is **LOW** ($H \ge 0.60$ or margin $< 0.15$), the system automatically triggers a **Safety-First Escalation**, promoting the patient to a higher monitoring category until reviewed by a physician.
-5. **Deterministic Clinical Interlocks**: Any vital sign reflecting immediate life-threat ($\text{SpO}_2 < 85\%$, $\text{SBP} < 70\text{ mmHg}$, $\text{GCS} \le 8$, or $\text{Shock Index} \ge 1.3$) immediately forces an ESI 1 resuscitation recommendation regardless of model probability.
+2. **Decision Margin**: Tracks the gap between the primary and secondary predicted classes ($p_{(1)} - p_{(2)}$).
+3. **Missingness Penalty**: Adjusts confidence downward when critical bedside parameters are missing or imputed.
+4. **Safety Escalation Trigger**: When confidence is **LOW** ($H \ge 0.60$ or margin $< 0.15$), the platform initiates an automated **Safety Escalation**, elevating monitoring frequency until reviewed by a physician.
+5. **Deterministic Clinical Safety Nets**: Extreme vital signs ($\text{SpO}_2 < 85\%$, $\text{SBP} < 70\text{ mmHg}$, $\text{GCS} \le 8$, or $\text{Shock Index} \ge 1.3$) trigger immediate ESI 1 resuscitation recommendations regardless of statistical model outputs.
 
 ---
 
-## 12. ED Workflow
+## Emergency Department Workflow
 
 ```mermaid
 flowchart TD
@@ -406,23 +365,23 @@ flowchart TD
 
 ---
 
-## 13. Surge Workflow
+## Surge Operations & Dynamic Capacity
 
-PatientTriage.ai includes a protocolized Emergency Surge Simulator ([`hospital_config_service.py`](file:///c:/Users/aksha/Downloads/PatientTriage-AI/backend/services/hospital_config_service.py)):
+The platform includes an Emergency Surge Protocol ([`hospital_config_service.py`](file:///c:/Users/aksha/Downloads/PatientTriage-AI/backend/services/hospital_config_service.py)):
 
-| Operational State | Normal Mode | Surge Mode ($3\times$ Influx) |
+| Operational Parameter | Normal Mode | Surge Mode ($3\times$ Influx) |
 | :--- | :--- | :--- |
-| **Arrival Rate** | Baseline Volume (e.g., 25/day) | $3.0\times$ Volume (e.g., 75/day) |
-| **Queue Prioritization** | Standard Acuity + Arrival Time | Dynamic Surge Re-indexing (`ESCALATE` & `REASSESS` elevated) |
-| **Safe Wait Thresholds** | Standard (ESI 2: 15m, ESI 3: 45m) | Tightened by 20% to prevent unobserved waiting room collapse |
-| **Fast Track Protocols** | Routine | Priority fast-tracking for ESI 4–5 to preserve acute care beds |
-| **Triage Acuity Rule** | Fixed | **Strict Preservation: Zero artificial down-triaging permitted** |
+| **Arrival Volume** | Baseline Volume (e.g., 25/day) | $3.0\times$ Scaled Volume (e.g., 75/day) |
+| **Queue Prioritization** | Standard Acuity + Arrival Time | Dynamic Surge Ranking (`ESCALATE` & `REASSESS` elevated) |
+| **Safe Wait Windows** | Standard (ESI 2: 15m, ESI 3: 45m) | Tightened by 20% to prevent unobserved waiting room collapse |
+| **Fast Track Utilization** | Routine Ambulatory Care | Aggressive fast-tracking for ESI 4–5 to protect acute beds |
+| **Acuity Integrity** | Fixed | **Strict Preservation: Zero artificial down-triaging permitted** |
 
 ---
 
-## 14. Hospital Scalability
+## Hospital Scalability & Multi-Tenancy
 
-The system includes pre-configured hospital operational scale profiles:
+Pre-configured hospital operational scale profiles:
 
 ```
 ┌─────────────────────────┬─────────────────────────┬─────────────────────────┐
@@ -437,39 +396,37 @@ Scalability parameters (bed capacity, reassessment intervals, surge multipliers)
 
 ---
 
-## 15. Patient Data Privacy & Security
+## Data Privacy, RBAC & Security Hardening
 
-PatientTriage.ai was designed with privacy and regulatory considerations in mind:
-
-- **Multi-Tenant Facility Isolation**: All database queries enforce strict `hospital_id` tenancy boundaries. Staff from one facility cannot query, view, or alter records of another facility.
-- **Role-Based Access Control**: Route-level permission guards enforce least-privilege access across 5 clinical roles.
-- **Cryptographic Password Hashing**: Passwords stored using PBKDF2-HMAC-SHA256 with 100,000 iterations and per-user cryptographic salts.
-- **Cryptographic Audit Trail**: Audit entries are immutable; `PUT` and `DELETE` methods are disabled on audit routes.
-- **Data Minimization**: AI inference routes consume only minimized physiological parameters, excluding names, contact information, and government IDs.
-- **Security Headers Middleware**: Implements `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, and strict CORS origin whitelisting.
+- **Multi-Tenant Facility Boundaries**: Enforces strict `hospital_id` tenancy. Clinicians from one facility cannot query, view, or modify encounters from another hospital.
+- **Role-Based Access Control**: Route-level permission guards enforce least-privilege access across all five clinical roles.
+- **Cryptographic Password Storage**: Passwords hashed with PBKDF2-HMAC-SHA256 using 100,000 iterations and per-user cryptographic salts.
+- **Immutable Audit Trail**: Compliance logs reject `PUT` and `DELETE` requests at the router level.
+- **Data Minimization**: AI inference endpoints consume only minimized clinical parameters, excluding names, contact details, and national IDs.
+- **Security Headers Middleware**: Implements `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, and strict CORS origin filtering.
 
 ---
 
-## 16. Technology Stack
+## Technology Stack
 
 | Domain | Technology / Library | Version | Role in Repository |
 | :--- | :--- | :--- | :--- |
-| **Backend Framework** | FastAPI | `^0.115.0` | Asynchronous REST API, OpenAPI docs, dependency injection |
-| **ASGI Web Server** | Uvicorn | `^0.34.0` | Production ASGI web server |
+| **Backend Framework** | FastAPI | `^0.115.0` | Asynchronous REST API, OpenAPI documentation, dependency injection |
+| **ASGI Server** | Uvicorn | `^0.34.0` | Production ASGI web server |
 | **Database ORM** | SQLAlchemy | `^2.0.30` | Relational ORM models, session management, multi-tenancy |
 | **Data Validation** | Pydantic | `^2.10.0` | Request/response schema validation and type safety |
-| **Machine Learning** | scikit-learn | `^1.4.0` | Multi-class classifiers, calibration, preprocessors |
-| **Interpretability** | SHAP | `^0.44.0` | Tree and Linear Shapley value attribution calculations |
+| **Machine Learning** | scikit-learn | `^1.4.0` | Multi-class classifiers, probability calibration, preprocessors |
+| **Model Interpretability** | SHAP | `^0.44.0` | Tree and Linear Shapley value attribution calculations |
 | **Numerical Processing**| NumPy & Pandas | `^2.2.0` | Feature matrix computation, rolling statistics, deltas |
 | **Frontend Framework** | React | `^19.2.8` | Component-based reactive user interface |
-| **Build & Tooling** | Vite | `^8.2.2` | Hot Module Replacement (HMR) and optimized build bundler |
-| **Styling & Design** | Tailwind CSS | `^4.3.3` | Utility-first clinical dark-mode dashboard styling |
+| **Build & Tooling** | Vite | `^8.2.2` | Hot Module Replacement (HMR) and production bundling |
+| **Styling** | Tailwind CSS | `^4.3.3` | Utility-first clinical dark-mode dashboard styling |
 | **Iconography** | Lucide React | `^1.34.0` | Clinical UI icons |
-| **Embedded Database** | SQLite | `3.x` | Zero-configuration relational database (`triage_database.db`) |
+| **Database** | SQLite | `3.x` | Embedded relational database (`triage_database.db`) |
 
 ---
 
-## 17. Project Structure
+## Repository Structure
 
 ```
 PatientTriage-AI/
@@ -521,17 +478,18 @@ PatientTriage-AI/
 │   ├── data_quality_engine.py         # Biological validation & clinical negation filtering
 │   ├── explainability_engine.py       # SHAP Tree/Linear factor attribution engine
 │   ├── models/                        # Serialized model artifacts (.joblib) & metadata (.json)
-│   ├── MODEL_CARD_ARRIVAL_TRIAGE_v1.0.md # Detailed Model Card for Arrival Classifier
-│   └── MODEL_CARD_DETERIORATION_v1.0.md  # Detailed Model Card for Deterioration Model
+│   ├── MODEL_CARD_ARRIVAL_TRIAGE_v1.0.md # Model Card for Arrival Classifier
+│   └── MODEL_CARD_DETERIORATION_v1.0.md  # Model Card for Deterioration Model
 ├── scripts/                           # Utility & showcase scripts
 │   └── run_round2_master_demonstration.py # Master end-to-end prototype demonstration
+├── LICENSE                            # MIT License
 ├── ROUND2_ARCHITECTURE.md             # Clinical specifications & regulatory documentation
 └── README.md                          # Project documentation
 ```
 
 ---
 
-## 18. Installation
+## Getting Started & Installation
 
 ### Prerequisites
 - **Python**: Version `3.10` or higher
@@ -565,124 +523,103 @@ npm install
 
 ---
 
-## 19. Environment Variables
+## Environment Configuration
 
-PatientTriage.ai works out of the box with zero external cloud dependencies. For custom deployments, the following environment variables can be configured:
+PatientTriage.ai operates locally with zero external cloud dependencies. For custom server setups, configure the following options:
 
 ```ini
-# Backend Configuration (backend/.env or shell)
+# Backend Configuration
 PORT=8000
 HOST=127.0.0.1
 ENVIRONMENT=development
 
-# Optional Custom Database URL (defaults to sqlite:///triage_database.db)
+# Database Connection (defaults to sqlite:///triage_database.db)
 DATABASE_URL=sqlite:///triage_database.db
 
-# Security & CORS (comma-separated origins)
+# CORS Allowed Origins
 CORS_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
 
-# Frontend Configuration (frontend/.env)
+# Frontend API Target (frontend/.env)
 VITE_API_BASE_URL=http://localhost:8000
 ```
 
-> [!WARNING]
-> Never commit active passwords, tokens, or production private keys into version control.
-
 ---
 
-## 20. Running the Application
+## Running the System
 
-### Option A: Standard Two-Terminal Launch
+### Standard Launch
 
-**Terminal 1: Start Backend**
+**Terminal 1: FastAPI Backend**
 ```bash
 cd backend
 python -m uvicorn main:app --reload --port 8000
 ```
-*API will be available at: `http://localhost:8000` (Interactive documentation: `http://localhost:8000/docs`)*
+- API Base: `http://localhost:8000`
+- Swagger Docs: `http://localhost:8000/docs`
 
-**Terminal 2: Start Frontend**
+**Terminal 2: Vite React Frontend**
 ```bash
 cd frontend
 npm run dev
 ```
-*Web dashboard will be available at: `http://localhost:5173`*
+- Web Application: `http://localhost:5173`
 
-### Option B: Run Master Prototype CLI Showcase
-To inspect all clinical requirements without a browser:
+### CLI Showcase Script
+To run an automated test across all clinical features without opening a browser:
 ```bash
 python scripts/run_round2_master_demonstration.py
 ```
 
 ---
 
-## 21. Demo Scenario
+## Interactive Demo Walkthrough
 
-Follow this recommended demonstration flow to evaluate all platform capabilities:
-
-1. **Facility Login**:
-   - Open `http://localhost:5173/`.
+1. **Staff Sign-In**:
+   - Navigate to `http://localhost:5173/`.
    - Enter Hospital Code: `DEMO001` (Demo General Hospital).
-   - Select Staff Role: `Emergency Physician` (`DOC001` — Dr. Gregory House, MD).
+   - Select Role: `Emergency Physician` (`DOC001` — Dr. Gregory House, MD).
    - Click **Access Clinical System**.
-2. **Review Live ED Overview**:
-   - Observe the 4 KPI cards: Active Patients (17 in care, 0 waiting), Available Beds (8 / 25), and Acuity Breakdown.
-3. **Inspect Acuity-Aware Care Space Allocation**:
-   - Look at the patient queue: Critical patients (`Patricia Dubois`, ESI 1) are assigned to Resuscitation Bays (`RESUS-01`), while deteriorating patients (`Nathaniel Reed`, ESI 1) occupy ICU Bays (`ICU-01`).
-4. **Inspect Explainable AI (SHAP)**:
+2. **ED Live Overview**:
+   - Observe key operational indicators: Active Patients (17 in care, 0 waiting), Available Beds (8 / 25), and Acuity Breakdown.
+3. **Care Space Allocation**:
+   - Inspect the patient queue: Resuscitation cases (`Patricia Dubois`, ESI 1) are placed in Resuscitation Bays (`RESUS-01`), while deteriorating cases (`Nathaniel Reed`, ESI 1) occupy ICU Bays (`ICU-01`).
+4. **SHAP Factor Explainability**:
    - Click the **Why AI Recommended** button on Patricia Dubois's card.
-   - Observe positive feature contributors (Shock Index = 1.48, $\text{SpO}_2$ = 88%) and model confidence (**HIGH 97%**).
-5. **Evaluate Deterioration Alert**:
-   - Observe the active banner on Patricia Dubois: *"POSSIBLE DETERIORATION: Longitudinal vital signs indicate worsening physiological status"*.
-6. **Register a Simulated Patient**:
-   - Click **+ Add Patient** in the header.
-   - Enter name, select arrival mode, enter chief complaint (*"Severe retrosternal chest pressure, denies shortness of breath"*).
-   - Enter bedside vitals: HR 105, SBP 92, DBP 60, RR 22, $\text{SpO}_2$ 93%.
-   - Click **Save & Run Triage Assessment**.
-   - Note that clinical negation parsing filtered *"denies shortness of breath"*.
-7. **Perform Physician Override**:
-   - Navigate to the **Physician Review** workspace.
-   - Select an encounter where AI recommended ESI 2.
-   - Change assigned acuity to ESI 3, input required justification: *"Patient stable, normal ECG, pain resolved post-nitroglycerin"*.
-   - Submit review. Notice that the original AI assessment remains immutably recorded.
-8. **Inspect Tamper-Evident Audit Trail**:
-   - Open **Audit Trail** from navigation.
-   - Observe the freshly recorded `AI_RECOMMENDATION_OVERRIDDEN` event displaying timestamp, actor ID (`DOC001`), and zero PII leakage.
-9. **Inspect Bed Capacity & Staff**:
-   - Open **Beds & Staff** view to inspect zone allocation across Resuscitation, ICU, Acute Care, and Fast Track.
-10. **Discharge Patient & Observe Bed Turnover**:
-    - Click **Discharge** on a patient in `RESUS-01`.
-    - Select destination (*"Home"*) and confirm.
-    - Notice that the bed is immediately freed and the patient is archived from the active queue.
+   - Review physiological contributors (Shock Index = 1.48, $\text{SpO}_2$ = 88%) and model confidence (**HIGH 97%**).
+5. **Deterioration Alerts**:
+   - Observe active trajectory alerts: *"POSSIBLE DETERIORATION: Longitudinal vital signs indicate worsening physiological status"*.
+6. **Simulated Patient Intake**:
+   - Click **+ Add Patient** in the top navigation bar.
+   - Enter complaint (*"Severe retrosternal chest pressure, denies shortness of breath"*).
+   - Input vitals: HR 105, SBP 92, DBP 60, RR 22, $\text{SpO}_2$ 93%.
+   - Submit assessment; note that clinical negation filtering prevents denied dyspnea from inflating respiratory risk.
+7. **Physician Review & Override**:
+   - Open the **Physician Review** workspace.
+   - Select an encounter with an AI-recommended ESI 2.
+   - Override the priority to ESI 3, providing a clinical rationale: *"Patient stable, normal ECG, pain resolved post-nitroglycerin"*.
+   - Submit the decision; note that the original AI assessment remains immutably recorded.
+8. **Compliance Audit Trail**:
+   - Open **Audit Trail** from the navigation bar.
+   - Verify the `AI_RECOMMENDATION_OVERRIDDEN` event showing timestamp, clinician ID (`DOC001`), and zero PII leakage.
+9. **Capacity & Bed Turnover**:
+   - Open **Beds & Staff** view to inspect zone allocation.
+   - Discharge a patient in `RESUS-01`; note that the bed is immediately released and the patient is archived from the active queue.
 
 ---
 
-## 22. Simulated Data Disclaimer
-
-> [!CAUTION]
-> ### ⚠️ Regulatory & Clinical Disclaimer
-> **PatientTriage.ai is an academic research and technical demonstration prototype.**
-> All patient records, clinical encounters, vitals time-series, and physiological trajectories in this repository are **entirely synthetic and simulated**. No real protected health information (PHI) or identifiable clinical data has been used.
-> 
-> The platform is **not certified by the FDA, CE, or any medical regulatory agency** as a medical device (SaMD). It must not be deployed in real-world clinical practice for medical diagnosis, autonomous triage, or definitive patient management.
-
----
-
-## 23. Testing
-
-The repository contains a test suite covering clinical workflows, RBAC, deterioration detection, physician reviews, audit trail integrity, and security hardening:
+## Verification & Automated Test Suite
 
 ```bash
-# Run the combined backend verification suite
+# Run the combined backend test suite
 cd backend
 python run_tests.py
 ```
 
-### Verified Test Results (0 Failures across 50 Tests)
+### Test Suite Execution Summary (50 / 50 Passing)
 
 ```
 =================================================================
-PATIENTTRIAGE.AI COMBINED VERIFICATION SUITE
+PATIENTTRIAGE.AI TEST VERIFICATION SUITE
 =================================================================
  TASK 9:  Longitudinal Deterioration & Trend Detection  [10 / 10 PASS]
  TASK 10: Physician Clinical Review & AI Override       [10 / 10 PASS]
@@ -693,47 +630,37 @@ PATIENTTRIAGE.AI COMBINED VERIFICATION SUITE
 =================================================================
 ```
 
-### Frontend Compilation Verification
+### Production Build Verification
 ```bash
 cd frontend
 npm run build
 ```
-*Builds client bundles in production mode with zero errors (1,830 modules transformed).*
+*Builds production bundles with zero errors (1,830 modules compiled).*
 
 ---
 
-## 24. Limitations
+## Clinical Scope & Limitations
 
-1. **Synthetic Training Cohort**: Models were trained on synthetically generated physiological trajectories. While calibrated to published emergency medicine distributions, real-world deployment requires training on validated institutional cohorts.
-2. **Rule-Based Negation Parsing**: The current clinical text negation filter uses lexical rules rather than a fine-tuned transformer (e.g., BioClinicalBERT). Complex conversational phrasing may not be parsed as robustly as structured vitals.
-3. **Absence of Waveform Telemetry**: Vital signs are currently captured at discrete measurement epochs ($T_0, T_1, \dots$) rather than streaming sub-second ECG or arterial line waveforms.
-4. **Local Single-File Database**: The prototype defaults to SQLite (`triage_database.db`) for zero-configuration hackathon demonstration. Multi-facility production scaling requires PostgreSQL.
-
----
-
-## 25. Future Work
-
-- [ ] **Prospective Multi-Center Validation**: Partnering with academic emergency departments to benchmark models against de-identified MIMIC-IV-ED triage registries.
-- [ ] **HL7 / FHIR Integration**: Native FHIR `Observation`, `Encounter`, and `Condition` resource adapters for bi-directional electronic health record (EHR) interoperability.
-- [ ] **Transformer-Based Clinical NLP**: Fine-tuning lightweight ClinicalBioBERT for deep extraction of chief complaint nuance, social determinants of health, and medication history.
-- [ ] **Wearable & Continuous Telemetry Ingestion**: Integrating Bluetooth Low Energy (BLE) pulse oximeters and automated vital monitors for automated $T_n$ sampling.
-- [ ] **Automated Model Drift Retraining**: Scheduled drift detection pipelines evaluating Kolmogorov-Smirnov statistics on intake vitals to trigger governed model retraining.
+1. **Synthetic Training Data**: Models were trained on synthetically generated physiological trajectories calibrated to emergency medicine distributions. Clinical deployment requires training on validated institutional EHR data.
+2. **Lexical Negation Parsing**: The current clinical text negation filter uses lexical rules rather than full transformer NLP (e.g., BioClinicalBERT). Complex conversational notes are better handled via structured vital inputs.
+3. **Discrete Vital Sampling**: Observations are evaluated at discrete measurement epochs ($T_0, T_1, \dots$) rather than sub-second streaming waveforms.
+4. **Local Database Default**: Defaults to SQLite for zero-configuration hackathon demonstration; production multi-facility scaling requires PostgreSQL.
 
 ---
 
-## 26. Contribution / Development Notes
+## Roadmap & Future Enhancements
 
-To extend or develop new capabilities:
-
-1. **Adding Backend Endpoints**: Create modular routers in `backend/routers/` and register them in `backend/main.py`.
-2. **Adding Model Features**: Modify `ml_pipeline/arrival_feature_extractor.py` and run `ml_pipeline/train_arrival_triage_model.py` to regenerate model artifacts and test metrics.
-3. **Database Schema Migrations**: Update `backend/models.py` and run `backend/run_tests.py` to confirm zero regressions across all security interlocks.
+- [ ] **Prospective Multi-Center Trials**: Partnering with academic emergency centers to benchmark against de-identified MIMIC-IV-ED datasets.
+- [ ] **HL7 / FHIR Interoperability**: Native FHIR `Observation`, `Encounter`, and `Condition` resource adapters for bidirectional EHR integration.
+- [ ] **Transformer-Based Clinical NLP**: Fine-tuning lightweight ClinicalBioBERT for deep extraction of chief complaint nuance and medication history.
+- [ ] **Streaming Telemetry Ingestion**: Direct integration with pulse oximeters and automated vital monitors for hands-free serial observation capture.
+- [ ] **Automated Model Drift Monitoring**: Scheduled drift detection pipelines evaluating Kolmogorov-Smirnov statistics on intake vitals to trigger governed retraining.
 
 ---
 
-## 27. License
+## License
 
-License information has not yet been specified.
+Distributed under the MIT License. See [`LICENSE`](LICENSE) for more information.
 
 ---
 
