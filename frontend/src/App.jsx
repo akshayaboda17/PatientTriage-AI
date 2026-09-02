@@ -14,6 +14,7 @@ import { StaffManagementView } from './components/StaffManagementView';
 import { AnalyticsView } from './components/AnalyticsView';
 import { MLOpsDashboard } from './components/mlops/MLOpsDashboard';
 import { PatientRegistrationModal } from './components/PatientRegistrationModal';
+import { ErrorBoundary } from './components/common/ErrorBoundary';
 
 const MainAppContent = () => {
   const { isAuthenticated, authHeaders } = useAuth();
@@ -183,8 +184,10 @@ const MainAppContent = () => {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <MainAppContent />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <MainAppContent />
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }

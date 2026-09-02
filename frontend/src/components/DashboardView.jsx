@@ -558,6 +558,17 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
                       careStatusBadgeCls = 'bg-slate-900 text-slate-400 border-slate-800';
                     }
 
+                    const isDischarged = patient.status === 'DISCHARGED';
+                    const isExplainExpanded = expandedExplainId === patient.encounter_id;
+                    const hasDeterioration = Boolean(
+                      (patient.alerts && patient.alerts.some(a => 
+                        a.status !== 'RESOLVED' && 
+                        (a.alert_type?.includes('DETERIORATION') || a.alert_type === 'POTENTIAL_DETERIORATION' || a.severity === 'CRITICAL')
+                      )) ||
+                      patient.safety_status === 'DETERIORATION' ||
+                      patient.possible_deterioration
+                    );
+
                     return (
                       <div
                         key={patient.encounter_id}
