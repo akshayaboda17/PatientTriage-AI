@@ -58,10 +58,6 @@ def get_ed_encounters(
         ]))
 
     from services.hospital_config_service import HospitalConfigService
-    from services.bed_service import BedService
-
-    # Auto-assign available beds to active patients so patients only wait if all beds are occupied
-    BedService.auto_assign_beds(db, staff.hospital_id)
 
     hosp_cfg = HospitalConfigService.get_config(staff.hospital_id)
     is_surge = hosp_cfg.get("surge_mode_active", False)

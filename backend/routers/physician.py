@@ -17,6 +17,7 @@ from services.rbac import (
 router = APIRouter(tags=["Physician Review & Clinical Decisions"])
 
 @router.post("/api/encounters/{encounter_id}/clinical-decision")
+@router.post("/api/encounters/{encounter_id}/physician-review")
 def record_clinical_decision(
     encounter_id: str,
     req: ClinicalDecisionRequest,

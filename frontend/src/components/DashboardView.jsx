@@ -400,7 +400,12 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
                   )}
                 </div>
                 <div className="text-[11px] text-slate-400 mt-0.5">
-                  {availableBeds === 0 ? (
+                  {capacityError ? (
+                    <button onClick={fetchDashboardData} className="text-cyan-400 hover:underline flex items-center gap-1 cursor-pointer">
+                      <RefreshCw className="w-2.5 h-2.5" />
+                      <span>Retry loading beds</span>
+                    </button>
+                  ) : availableBeds === 0 ? (
                     <span className="text-amber-400 font-semibold">Care spaces at capacity</span>
                   ) : (
                     <span className="text-slate-400">{totalBeds - availableBeds} care spaces occupied</span>
