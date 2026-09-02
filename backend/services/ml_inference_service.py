@@ -86,7 +86,7 @@ class MLInferenceService:
         patient: Patient,
         encounter: EDEncounter,
         arrival_obs: Optional[ClinicalObservation],
-        model_version: str = "1.0"
+        model_version: str = "1.1"
     ) -> Dict[str, Any]:
         """
         Executes dedicated Arrival Triage ML Model using strictly Point-of-Arrival (T0) features.
@@ -139,7 +139,7 @@ class MLInferenceService:
         current_obs: Optional[ClinicalObservation],
         prior_obs: Optional[ClinicalObservation] = None,
         obs_index: int = 1,
-        model_version: str = "1.0"
+        model_version: str = "1.1"
     ) -> Dict[str, Any]:
         """
         Executes combined ML clinical evaluation:

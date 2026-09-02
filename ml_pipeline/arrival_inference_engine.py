@@ -37,8 +37,8 @@ class ArrivalTriageInferenceEngine:
         self.metadata_path = os.path.join(models_dir, f"model_metadata_v{model_version}.json")
 
         if not os.path.exists(self.model_path) or not os.path.exists(self.preprocessor_path):
-            # Fallback to v1.0 if v1.1 not yet built
-            if model_version != "1.0":
+            # Fallback to v1.0 only if v1.1 not yet built
+            if model_version == "1.1":
                 fallback_path = os.path.join(models_dir, "arrival_triage_model_v1.0.joblib")
                 if os.path.exists(fallback_path):
                     self.model_version = "1.0"
