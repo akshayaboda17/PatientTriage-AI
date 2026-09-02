@@ -2,7 +2,6 @@
 
 ### AI-Powered Emergency Department Triage & Clinical Decision Support
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![React 19](https://img.shields.io/badge/Frontend-React_19-61DAFB.svg?logo=react&logoColor=black)](https://react.dev/)
 [![Vite](https://img.shields.io/badge/Build-Vite_8-646CFF.svg?logo=vite&logoColor=white)](https://vitejs.dev/)
@@ -482,7 +481,6 @@ PatientTriage-AI/
 │   └── MODEL_CARD_DETERIORATION_v1.0.md  # Model Card for Deterioration Model
 ├── scripts/                           # Utility & showcase scripts
 │   └── run_round2_master_demonstration.py # Master end-to-end prototype demonstration
-├── LICENSE                            # MIT License
 ├── ROUND2_ARCHITECTURE.md             # Clinical specifications & regulatory documentation
 └── README.md                          # Project documentation
 ```
@@ -655,12 +653,6 @@ npm run build
 - [ ] **Transformer-Based Clinical NLP**: Fine-tuning lightweight ClinicalBioBERT for deep extraction of chief complaint nuance and medication history.
 - [ ] **Streaming Telemetry Ingestion**: Direct integration with pulse oximeters and automated vital monitors for hands-free serial observation capture.
 - [ ] **Automated Model Drift Monitoring**: Scheduled drift detection pipelines evaluating Kolmogorov-Smirnov statistics on intake vitals to trigger governed retraining.
-
----
-
-## License
-
-Distributed under the MIT License. See [`LICENSE`](LICENSE) for more information.
 
 ---
 
