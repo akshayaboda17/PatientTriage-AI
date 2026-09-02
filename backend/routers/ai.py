@@ -54,7 +54,7 @@ def generate_ai_risk_assessment(
             current_obs=latest_obs,
             prior_obs=prior_obs,
             obs_index=obs_count,
-            model_version="1.0"
+            model_version="1.1"
         )
     except Exception as e:
         # Clinical Safety: Never fabricate a prediction upon model failure.

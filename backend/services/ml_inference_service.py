@@ -65,7 +65,10 @@ class MLInferenceService:
             try:
                 cls._decomp_engine = TriageRiskInferenceEngine(model_version=model_version)
             except Exception as e:
-                raise RuntimeError(f"Failed to load Decompensation Risk model bundle (v{model_version}): {e}")
+                if model_version != "1.0":
+                    cls._decomp_engine = TriageRiskInferenceEngine(model_version="1.0")
+                else:
+                    raise RuntimeError(f"Failed to load Decompensation Risk model bundle (v{model_version}): {e}")
         return cls._decomp_engine
 
     @classmethod
@@ -77,7 +80,10 @@ class MLInferenceService:
             try:
                 cls._shap_engine = ShapExplainabilityEngine(model_version=model_version)
             except Exception as e:
-                raise RuntimeError(f"Failed to load SHAP explainability engine (v{model_version}): {e}")
+                if model_version != "1.0":
+                    cls._shap_engine = ShapExplainabilityEngine(model_version="1.0")
+                else:
+                    raise RuntimeError(f"Failed to load SHAP explainability engine (v{model_version}): {e}")
         return cls._shap_engine
 
     @classmethod

@@ -246,6 +246,18 @@ export const PhysicianReviewWorkspace = ({ encounterId, onBack, onDecisionSaved 
               </div>
             </div>
 
+            <div className="p-3 bg-slate-950/80 rounded-xl border border-slate-800 space-y-1.5 text-xs">
+              <div className="flex items-center justify-between text-[10px]">
+                <span className="font-bold text-slate-400 uppercase tracking-wider">Clinical Autonomy Principle</span>
+                <span className="font-mono text-cyan-400 bg-cyan-950/70 px-2 py-0.5 rounded border border-cyan-800/60 font-semibold text-[9px]">
+                  AI recommendation ≠ final clinical decision
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-snug">
+                The attending physician retains complete authority. All overrides and rationales are preserved immutably in the clinical audit trail.
+              </p>
+            </div>
+
             <form onSubmit={handleSaveDecision} className="space-y-4 text-xs">
               
               {/* AI Agreement Radio Group */}

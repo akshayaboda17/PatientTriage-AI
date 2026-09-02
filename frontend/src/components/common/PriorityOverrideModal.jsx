@@ -102,22 +102,26 @@ export const PriorityOverrideModal = ({
               </div>
             </div>
 
-            {/* Original AI Recommendation (Preserved) */}
-            <div className="p-3 bg-indigo-950/30 rounded-2xl border border-indigo-900/50 space-y-1">
+            {/* Original AI Recommendation (Preserved in Audit Trail) */}
+            <div className="p-3.5 bg-indigo-950/30 rounded-2xl border border-indigo-900/50 space-y-1.5">
               <div className="flex items-center justify-between">
-                <span className="text-[10px] uppercase font-bold text-indigo-400 tracking-wider">
-                  Original AI Recommendation (Preserved)
+                <span className="text-[10px] uppercase font-bold text-cyan-400 tracking-wider flex items-center gap-1">
+                  <Sparkles className="w-3 h-3 text-cyan-400" />
+                  <span>AI-SUPPORTED ASSESSMENT (PRESERVED IN AUDIT LOG)</span>
                 </span>
                 <span className="text-[10px] font-mono text-slate-400">
-                  Model v1.0
+                  Model v{encounter?.ai_risk?.arrival_model_version || encounter?.ai_risk?.model_version || '1.1'}
                 </span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-sm font-bold text-slate-200">{originalMeta.primary}</span>
+                <span className="text-sm font-bold text-slate-100">{originalMeta.primary}</span>
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${originalMeta.badgeCls}`}>
                   {originalMeta.secondary}
                 </span>
               </div>
+              <p className="text-[10px] text-slate-400 italic">
+                *Clinical Decision Support: AI recommendation ≠ final clinical decision. Overrides are recorded immutably with your credentials and mandatory rationale.
+              </p>
             </div>
 
             {/* New Priority Selection */}

@@ -243,3 +243,45 @@ export const formatAuditResult = (res) => {
   if (!res) return { label: 'Completed', cls: 'bg-slate-800 text-slate-300 border-slate-700' };
   return AUDIT_RESULTS[res] || { label: res, cls: 'bg-slate-800 text-slate-300 border-slate-700' };
 };
+
+/**
+ * Maps raw model feature keys to clinician-readable clinical terms.
+ */
+export const CLINICAL_FEATURE_LABELS = {
+  spo2: 'Oxygen Saturation (SpO2)',
+  rr: 'Respiratory Rate (RR)',
+  hr: 'Heart Rate (HR)',
+  sbp: 'Systolic Blood Pressure (SBP)',
+  dbp: 'Diastolic Blood Pressure (DBP)',
+  temp: 'Body Temperature',
+  gcs: 'Glasgow Coma Scale (GCS)',
+  pain_score: 'Reported Pain Severity',
+  shock_index: 'Shock Index (HR/SBP)',
+  modified_shock_index: 'Modified Shock Index',
+  pulse_pressure: 'Pulse Pressure',
+  mean_arterial_pressure: 'Mean Arterial Pressure (MAP)',
+  qsofa_score: 'qSOFA Organ Failure Score',
+  qsofa: 'qSOFA Sepsis Indicator',
+  mews_score: 'MEWS Early Warning Score',
+  mews: 'MEWS Early Warning Score',
+  age: 'Patient Age',
+  complaint_chest_pain: 'Presenting Complaint: Chest Pain',
+  complaint_respiratory: 'Presenting Complaint: Respiratory / Dyspnea',
+  complaint_abdominal: 'Presenting Complaint: Abdominal Pain',
+  complaint_neurological: 'Presenting Complaint: Neurological Deficits',
+  complaint_trauma: 'Presenting Complaint: Physical Trauma',
+  complaint_infection_fever: 'Presenting Complaint: Infection / Fever',
+  complaint_other: 'Presenting Complaint: Other',
+  arrival_mode_ambulance: 'Arrival Mode: Ambulance Transport',
+  arrival_mode_walkin: 'Arrival Mode: Ambulatory / Walk-in',
+  arrival_mode_wheelchair: 'Arrival Mode: Wheelchair',
+  is_zero_history: 'First-time Visit / Zero Known History',
+  has_known_history: 'Documented Prior Medical History',
+  has_known_allergies: 'Documented Drug / Environmental Allergies'
+};
+
+export const formatClinicalFeatureName = (featureKey) => {
+  if (!featureKey) return 'Clinical Parameter';
+  const clean = String(featureKey).trim().toLowerCase();
+  return CLINICAL_FEATURE_LABELS[clean] || featureKey.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+};

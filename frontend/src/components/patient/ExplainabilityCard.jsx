@@ -1,5 +1,6 @@
 import React from 'react';
 import { FileText, TrendingUp, TrendingDown, Info, Cpu, Sparkles } from 'lucide-react';
+import { formatClinicalFeatureName } from '../../utils/terminology';
 
 export const ExplainabilityCard = ({ aiExplanation }) => {
   if (!aiExplanation) return null;
@@ -16,12 +17,12 @@ export const ExplainabilityCard = ({ aiExplanation }) => {
             <Sparkles className="w-4 h-4" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-white tracking-tight">Why the AI Made This Assessment</h3>
-            <p className="text-[10px] text-slate-400">Key clinical factors influencing the AI risk calculation</p>
+            <h3 className="text-sm font-bold text-white tracking-tight">CLINICAL DECISION SUPPORT · AI EXPLAINABILITY</h3>
+            <p className="text-[10px] text-slate-400">Model-derived statistical feature attributions (SHAP analysis)</p>
           </div>
         </div>
         <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-indigo-950/80 border border-indigo-800/60 text-indigo-300">
-          AI Explanation (SHAP)
+          SHAP v1.1
         </span>
       </div>
 
@@ -37,7 +38,7 @@ export const ExplainabilityCard = ({ aiExplanation }) => {
       {topFeatures.length > 0 && (
         <div className="space-y-2">
           <div className="flex items-center justify-between text-[10px] uppercase font-bold text-slate-400 px-1">
-            <span>Factors Influencing the AI Assessment</span>
+            <span>Factors influencing this AI assessment:</span>
             <span>Impact on Estimated Risk</span>
           </div>
 
@@ -62,7 +63,7 @@ export const ExplainabilityCard = ({ aiExplanation }) => {
                         </div>
                       )}
                       <div>
-                        <span className="font-semibold text-slate-200">{feat.feature}</span>
+                        <span className="font-semibold text-slate-200">{formatClinicalFeatureName(feat.feature)}</span>
                         <span className="text-slate-400 font-mono text-[11px] ml-1.5">[{feat.value}]</span>
                       </div>
                     </div>
@@ -75,7 +76,7 @@ export const ExplainabilityCard = ({ aiExplanation }) => {
                             : 'bg-emerald-950/80 text-emerald-300 border border-emerald-800/60'
                         }`}
                       >
-                        {isElevating ? 'Increases Risk' : 'Reduces Risk'}
+                        {isElevating ? 'Elevates Urgency' : 'Stabilizing Factor'}
                       </span>
                       <span
                         className={`font-mono font-bold text-xs ${
@@ -97,7 +98,7 @@ export const ExplainabilityCard = ({ aiExplanation }) => {
       <div className="flex items-start gap-2 pt-1 p-2.5 rounded-xl bg-slate-950/60 border border-slate-800/60 text-[10px] text-slate-400 leading-relaxed">
         <Info className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
         <span>
-          Clinical Note: AI factors reflect statistical correlations within observed patient vitals and do not replace professional medical judgment.
+          Clinical Note: Factors influencing the AI assessment represent statistical feature associations within the mathematical model and do not indicate clinical causation or replace attending physician judgment.
         </span>
       </div>
     </div>

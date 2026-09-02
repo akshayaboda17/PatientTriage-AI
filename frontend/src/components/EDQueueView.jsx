@@ -318,6 +318,11 @@ export const EDQueueView = ({ onSelectPatient, onReviewPatient, onOpenRegister, 
                       {/* Priority */}
                       <td className="px-4 py-3.5 whitespace-nowrap">
                         <AcuityBadge level={patient.triage_level} />
+                        {patient.is_overridden && (
+                          <span className="text-[9px] text-amber-400 font-bold block mt-0.5">
+                            Clinician Decision
+                          </span>
+                        )}
                       </td>
 
                       {/* Patient Name */}
@@ -335,23 +340,32 @@ export const EDQueueView = ({ onSelectPatient, onReviewPatient, onOpenRegister, 
                       </td>
 
                       {/* AI Risk Assessment */}
-                      <td className="px-4 py-3.5 whitespace-nowrap font-mono">
+                      <td className="px-4 py-3.5 whitespace-nowrap text-xs">
                         {patient.ai_risk ? (
-                          <div className="space-y-0.5">
-                            <div className="flex items-center gap-1.5">
-                              <span className={`font-bold ${
+                          <div className="space-y-1">
+                            <div className="flex items-center gap-1.5 font-mono text-[11px]">
+                              <span className="text-[10px] text-cyan-400 font-bold">Arrival AI:</span>
+                              <span className="text-slate-200 font-semibold">ESI {patient.original_ai_level || patient.ai_risk.predicted_triage_level || patient.triage_level}</span>
+                              <span className="text-slate-600">·</span>
+                              <span className="text-emerald-400 font-bold">{patient.ai_risk.confidence_score ? `${Math.round(patient.ai_risk.confidence_score)}%` : '85%'}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 font-mono text-[11px]">
+                              <span className="text-[10px] text-purple-400 font-bold">Det Risk:</span>
+                              <span className={
                                 patient.ai_risk.risk_category === 'HIGH' || patient.ai_risk.risk_category === 'CRITICAL'
-                                  ? 'text-rose-400'
+                                  ? 'text-rose-400 font-bold'
                                   : patient.ai_risk.risk_category === 'MODERATE'
-                                  ? 'text-amber-400'
-                                  : 'text-emerald-400'
-                              }`}>
-                                {patient.ai_risk.risk_probability !== undefined
-                                  ? `${(patient.ai_risk.risk_probability * 100).toFixed(0)}%`
-                                  : `${patient.ai_risk.risk_score}%`} Estimated Risk
+                                  ? 'text-amber-400 font-bold'
+                                  : 'text-cyan-300 font-bold'
+                              }>
+                                {patient.ai_risk.risk_category} ({patient.ai_risk.risk_probability !== undefined ? `${(patient.ai_risk.risk_probability * 100).toFixed(0)}%` : `${patient.ai_risk.risk_score}%`})
                               </span>
                             </div>
-                            <ConfidenceBadge confidence={patient.ai_risk.confidence || 'HIGH'} />
+                            {(patient.confidence === 'LOW' || patient.ai_risk.confidence_tier === 'LOW' || (patient.ai_risk.uncertainty_score !== undefined && patient.ai_risk.uncertainty_score >= 0.4)) && (
+                              <span className="inline-block px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-950 text-amber-300 border border-amber-800">
+                                AI UNCERTAIN · Review Req.
+                              </span>
+                            )}
                           </div>
                         ) : (
                           <span className="text-slate-600 text-[10px]">Triage Assigned</span>

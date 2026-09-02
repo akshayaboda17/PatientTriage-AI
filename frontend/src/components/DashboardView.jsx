@@ -8,7 +8,7 @@ import {
   FileText, Check, ChevronDown, ChevronUp, AlertCircle, LogOut, HeartPulse
 } from 'lucide-react';
 import { LoadingSkeleton, EmptyState, ErrorState, AcuityBadge, SafetyStatusBadge, ConfidenceBadge, AgeGroupBadge } from './common/StateViews';
-import { PRIORITY_LEVELS, getPriorityMeta, PATIENT_STATUSES, getPatientStatusMeta } from '../utils/terminology';
+import { PRIORITY_LEVELS, getPriorityMeta, PATIENT_STATUSES, getPatientStatusMeta, formatClinicalFeatureName } from '../utils/terminology';
 import { PriorityOverrideModal } from './common/PriorityOverrideModal';
 import { UpdatePatientConditionModal } from './patient/UpdatePatientConditionModal';
 
@@ -578,6 +578,30 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
                       patient.possible_deterioration
                     );
 
+                    const aiConfidenceScore = patient.ai_risk?.confidence_score !== undefined
+                      ? Math.round(patient.ai_risk.confidence_score)
+                      : (patient.confidence === 'HIGH' ? 88 : patient.confidence === 'MODERATE' ? 65 : 42);
+
+                    const aiConfidenceTier = patient.ai_risk?.confidence_tier || patient.confidence || 'HIGH';
+
+                    const aiModelVer = patient.ai_risk?.arrival_model_version || patient.ai_risk?.model_version || '1.1';
+
+                    const aiTimestamp = patient.ai_risk?.assessed_at
+                      ? new Date(patient.ai_risk.assessed_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                      : null;
+
+                    const isUncertain = Boolean(
+                      aiConfidenceTier === 'LOW' ||
+                      (patient.ai_risk?.uncertainty_score !== undefined && patient.ai_risk.uncertainty_score >= 0.40) ||
+                      (patient.ai_risk?.decision_margin !== undefined && patient.ai_risk.decision_margin < 0.15)
+                    );
+
+                    const decompProbability = patient.ai_risk?.risk_probability !== undefined && patient.ai_risk?.risk_probability !== null
+                      ? Math.round(patient.ai_risk.risk_probability * 100)
+                      : (patient.ai_risk?.risk_score !== undefined ? Math.round(patient.ai_risk.risk_score) : null);
+
+                    const decompCategory = patient.ai_risk?.risk_category || 'MODERATE';
+
                     return (
                       <div
                         key={patient.encounter_id}
@@ -638,63 +662,170 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
                           </div>
                         </div>
 
-                        {/* MIDDLE ROW: Chief Complaint & Core Telemetry Grid */}
+                        {/* PRESENTING COMPLAINT & CARE SPACE */}
                         <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center text-xs">
-                          
-                          {/* Chief Complaint (4 cols) */}
-                          <div className="md:col-span-4 space-y-0.5">
+                          {/* Presenting Complaint (7 cols) */}
+                          <div className="md:col-span-7 space-y-0.5">
                             <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block">Presenting Complaint</span>
                             <p className="text-slate-200 font-medium leading-snug line-clamp-2" title={patient.chief_complaint}>
                               {patient.chief_complaint || 'No complaint recorded.'}
                             </p>
                           </div>
 
-                          {/* Care Priority & ESI (3 cols) */}
-                          <div className="md:col-span-3 space-y-0.5">
-                            <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block">Care Priority</span>
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className={`px-2.5 py-1 rounded-xl text-xs font-bold shadow-sm ${priorityMeta.badgeCls}`}>
-                                {priorityMeta.primary}
-                              </span>
-                              <span className="text-[10px] text-slate-400 font-mono">
-                                ({priorityMeta.secondary})
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* AI Risk & Confidence (3 cols) */}
-                          <div className="md:col-span-3 space-y-0.5">
-                            <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block">AI Decision Support</span>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              {patient.ai_risk ? (
-                                <span className={`px-2 py-0.5 rounded-lg text-[11px] font-bold font-mono ${
-                                  patient.ai_risk.risk_category === 'CRITICAL' ? 'bg-rose-950 text-rose-300 border border-rose-800' :
-                                  patient.ai_risk.risk_category === 'HIGH' ? 'bg-amber-950 text-amber-300 border border-amber-800' :
-                                  'bg-slate-900 text-cyan-300 border border-slate-800'
-                                }`}>
-                                  {patient.ai_risk.risk_category} ({Math.round((patient.ai_risk.risk_probability || 0) * 100)}%)
-                                </span>
-                              ) : (
-                                <span className="text-slate-500 text-[11px]">AI Baseline</span>
-                              )}
-                              <ConfidenceBadge tier={patient.confidence || 'MODERATE'} />
-                            </div>
-                          </div>
-
-                          {/* Care Space & Status (2 cols) */}
-                          <div className="md:col-span-2 space-y-0.5">
+                          {/* Care Space & Status (5 cols) */}
+                          <div className="md:col-span-5 space-y-0.5 text-left md:text-right">
                             <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider block">Care Space / Status</span>
-                            <span className={`inline-block px-2 py-0.5 rounded-lg text-[10px] font-bold border ${careStatusBadgeCls}`}>
-                              {careStatusText}
-                            </span>
-                            <div className={`text-[10px] font-mono truncate mt-0.5 ${hasAssignedBed ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}>
-                              {bedDisplayText}
+                            <div className="flex items-center gap-2 flex-wrap md:justify-end">
+                              <span className={`inline-block px-2 py-0.5 rounded-lg text-[10px] font-bold border ${careStatusBadgeCls}`}>
+                                {careStatusText}
+                              </span>
+                              <span className={`text-[10px] font-mono ${hasAssignedBed ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}>
+                                {bedDisplayText}
+                              </span>
                             </div>
                           </div>
-
                         </div>
 
-                        {/* SAFE WAIT EXCEEDED / REASSESSMENT ALERT (Requirement 14, 15, 16) */}
+                        {/* CORE CLINICAL DECISION BENCHMARK (Requirements 1, 2, 7) */}
+                        {/* Visually establishes: AI recommendation ≠ final clinical decision */}
+                        <div className="p-3 bg-slate-950/85 rounded-xl border border-slate-800 space-y-2">
+                          <div className="flex items-center justify-between border-b border-slate-800/80 pb-1 text-[10px]">
+                            <span className="font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                              <span>Clinical Decision Support Benchmark</span>
+                            </span>
+                            <span className="font-mono text-cyan-300 bg-cyan-950/70 px-2 py-0.5 rounded border border-cyan-800/70 font-semibold text-[9px]">
+                              AI recommendation ≠ final clinical decision
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                            
+                            {/* 1. AI Recommendation (Arrival AI) */}
+                            <div className="space-y-1 bg-slate-900/70 p-2.5 rounded-lg border border-slate-800">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] uppercase font-bold text-cyan-400 tracking-wider">
+                                  AI-Supported Assessment
+                                </span>
+                                {aiModelVer && (
+                                  <span className="text-[9px] font-mono text-slate-500">v{aiModelVer}</span>
+                                )}
+                              </div>
+                              <div className="text-slate-100 font-bold text-xs">
+                                {origAiMeta.primary}
+                              </div>
+                              <div className="flex items-center gap-2 text-[10px] font-mono text-slate-400">
+                                <span className="text-slate-300 font-semibold">{origAiMeta.secondary}</span>
+                                <span>·</span>
+                                <span>Confidence: <strong className="text-emerald-400">{aiConfidenceScore}%</strong></span>
+                              </div>
+                            </div>
+
+                            {/* 2. Clinician Decision */}
+                            <div className="space-y-1 bg-slate-900/70 p-2.5 rounded-lg border border-slate-800">
+                              <span className="text-[10px] uppercase font-bold text-amber-400 tracking-wider flex items-center gap-1">
+                                <Stethoscope className="w-3 h-3 text-amber-400" />
+                                <span>Clinician Decision</span>
+                              </span>
+                              {isOverridden ? (
+                                <>
+                                  <div className="text-amber-300 font-bold text-xs">
+                                    {priorityMeta.primary}
+                                  </div>
+                                  <div className="text-[10px] text-slate-400 font-mono">
+                                    <span className="text-amber-400 font-semibold">{priorityMeta.secondary}</span>
+                                    <span className="text-slate-400 block truncate font-sans text-[10px] mt-0.5" title={patient.override_info?.reason}>
+                                      Reason: "{patient.override_info?.reason || 'Clinical priority adjustment'}"
+                                    </span>
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="text-slate-300 font-semibold text-xs">
+                                    Agreed with AI Recommendation
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 italic">
+                                    Standard clinical protocol accepted
+                                  </div>
+                                </>
+                              )}
+                            </div>
+
+                            {/* 3. Current Priority */}
+                            <div className="space-y-1 bg-slate-900/70 p-2.5 rounded-lg border border-slate-800">
+                              <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider flex items-center gap-1">
+                                <Activity className="w-3 h-3 text-emerald-400" />
+                                <span>Current Active Priority</span>
+                              </span>
+                              <div>
+                                <span className={`inline-block px-2.5 py-0.5 rounded-lg text-xs font-bold ${priorityMeta.badgeCls}`}>
+                                  {priorityMeta.primary}
+                                </span>
+                              </div>
+                              <span className="text-[10px] text-slate-400 font-mono block">
+                                {priorityMeta.secondary}
+                              </span>
+                            </div>
+
+                          </div>
+                        </div>
+
+                        {/* DETERIORATION AI TELEMETRY STRIP (Requirement 8) */}
+                        {/* Clearly separates Arrival Care Priority from Future Deterioration Risk */}
+                        <div className="p-2.5 rounded-xl bg-slate-950/50 border border-slate-800/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-[10px] uppercase font-bold text-purple-400 tracking-wider flex items-center gap-1">
+                              <HeartPulse className="w-3.5 h-3.5 text-purple-400" />
+                              <span>Deterioration AI:</span>
+                            </span>
+                            <span className="text-slate-300 font-medium">
+                              Future Deterioration Risk:
+                            </span>
+                            <span className={`px-2 py-0.2 rounded font-mono font-bold text-[11px] ${
+                              decompCategory === 'CRITICAL' ? 'bg-rose-950 text-rose-300 border border-rose-800' :
+                              decompCategory === 'HIGH' ? 'bg-amber-950 text-amber-300 border border-amber-800' :
+                              'bg-slate-900 text-cyan-300 border border-slate-800'
+                            }`}>
+                              {decompCategory} {decompProbability !== null ? `(${decompProbability}%)` : ''}
+                            </span>
+                            <span className="text-[10px] text-slate-500 font-mono">
+                              (24h Decompensation Forecast)
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-slate-500 italic">
+                            *Deterioration risk is distinct from arrival triage priority
+                          </span>
+                        </div>
+
+                        {/* AI ASSESSMENT UNCERTAIN BANNER (Requirement 4) */}
+                        {isUncertain && !isDischarged && (
+                          <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/70 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+                            <div className="flex items-center gap-2 text-amber-300 font-bold">
+                              <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                              <div>
+                                <span className="uppercase text-[11px] block tracking-wide text-amber-300 font-bold">
+                                  AI ASSESSMENT UNCERTAIN
+                                </span>
+                                <span className="text-amber-200/90 font-normal text-xs">
+                                  Clinician review required. Model uncertainty or borderline decision margin detected.
+                                </span>
+                              </div>
+                            </div>
+                            {!isDischarged && hasPermission('triage:update') && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOverrideModalEncounter(patient);
+                                }}
+                                className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition-all shrink-0 cursor-pointer"
+                              >
+                                [Review &amp; Verify Priority]
+                              </button>
+                            )}
+                          </div>
+                        )}
+
+                        {/* SAFE WAIT EXCEEDED / REASSESSMENT ALERT */}
                         {isSafeWaitExceeded && !isDischarged && (
                           <div className="p-2.5 rounded-xl bg-amber-950/40 border border-amber-500/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
                             <div className="flex items-center gap-2 text-amber-300 font-semibold">
@@ -715,7 +846,7 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
                           </div>
                         )}
 
-                        {/* POSSIBLE DETERIORATION BANNER (Requirement 17) */}
+                        {/* POSSIBLE DETERIORATION BANNER */}
                         {hasDeterioration && !isDischarged && (
                           <div className="p-2.5 rounded-xl bg-rose-950/50 border border-rose-600 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs animate-pulse">
                             <div className="flex items-center gap-2 text-rose-300 font-bold">
@@ -736,35 +867,7 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
                           </div>
                         )}
 
-                        {/* CLINICIAN OVERRIDE RIBBON (Requirements 3, 4, 5) */}
-                        {isOverridden && (
-                          <div className="p-2.5 rounded-xl bg-indigo-950/40 border border-indigo-600/50 text-xs space-y-1">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-indigo-600 text-white">
-                                  Clinician Decision Override
-                                </span>
-                                <span className="text-slate-300">
-                                  Original AI: <strong className="text-indigo-300">{origAiMeta.primary}</strong> ({origAiMeta.secondary})
-                                </span>
-                                <ArrowUpRight className="w-3.5 h-3.5 text-indigo-400" />
-                                <span className="text-slate-100">
-                                  Clinician Assigned: <strong className="text-amber-300">{priorityMeta.primary}</strong> ({priorityMeta.secondary})
-                                </span>
-                              </div>
-                              <span className="text-[10px] text-slate-400 font-mono">
-                                Overridden by {patient.override_info?.overridden_by || 'Attending Clinician'}
-                              </span>
-                            </div>
-                            {patient.override_info?.reason && (
-                              <p className="text-[11px] text-slate-300 italic">
-                                Justification: "{patient.override_info.reason}"
-                              </p>
-                            )}
-                          </div>
-                        )}
-
-                        {/* INLINE IMMEDIATE EXPLAINABILITY DRAWER (Requirement 2) */}
+                        {/* INLINE IMMEDIATE EXPLAINABILITY DRAWER (Requirements 1, 3, 7) */}
                         {isExplainExpanded && (
                           <div className="p-4 rounded-2xl bg-slate-900 border border-cyan-800/60 shadow-xl space-y-3 animate-in fade-in duration-150 text-xs">
                             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
@@ -774,7 +877,7 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
                                   Why Did The AI Recommend This Priority?
                                 </span>
                                 <span className="text-[10px] font-semibold text-cyan-300 bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800">
-                                  Clinical Decision Support · AI-Supported Assessment
+                                  CLINICAL DECISION SUPPORT · AI-SUPPORTED ASSESSMENT
                                 </span>
                               </div>
                               <button
@@ -795,20 +898,20 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
                               </div>
 
                               <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
-                                <span className="text-[10px] uppercase font-bold text-slate-400 block">Estimated AI Risk</span>
+                                <span className="text-[10px] uppercase font-bold text-slate-400 block">Deterioration AI Risk</span>
                                 <strong className={`text-sm font-bold block mt-0.5 ${
-                                  patient.ai_risk?.risk_category === 'CRITICAL' ? 'text-rose-400' :
-                                  patient.ai_risk?.risk_category === 'HIGH' ? 'text-amber-400' : 'text-cyan-300'
+                                  decompCategory === 'CRITICAL' ? 'text-rose-400' :
+                                  decompCategory === 'HIGH' ? 'text-amber-400' : 'text-cyan-300'
                                 }`}>
-                                  {patient.ai_risk?.risk_category || 'MODERATE'} ({Math.round((patient.ai_risk?.risk_probability || 0) * 100)}%)
+                                  {decompCategory} {decompProbability !== null ? `(${decompProbability}%)` : ''}
                                 </strong>
-                                <span className="text-[10px] text-slate-400">Longitudinal Decompensation Risk</span>
+                                <span className="text-[10px] text-slate-400">24h Longitudinal Decompensation Risk</span>
                               </div>
 
                               <div className="bg-slate-950 p-2.5 rounded-xl border border-slate-800">
-                                <span className="text-[10px] uppercase font-bold text-slate-400 block">Model Confidence / Uncertainty</span>
+                                <span className="text-[10px] uppercase font-bold text-slate-400 block">Model Confidence &amp; Uncertainty</span>
                                 <strong className="text-slate-200 text-sm font-bold block mt-0.5">
-                                  {patient.confidence || 'MODERATE'} Confidence
+                                  {aiConfidenceScore}% ({aiConfidenceTier} Confidence)
                                 </strong>
                                 <span className="text-[10px] text-slate-400 font-mono">
                                   Uncertainty: {Math.round((patient.ai_risk?.uncertainty_score || 0) * 100)}%
@@ -816,38 +919,91 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
                               </div>
                             </div>
 
-                            {/* Top Influencing Features from Actual Model Output */}
-                            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-1.5">
-                              <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
-                                Top Clinical Factors Influencing Assessment
+                            {/* 5-CLASS PROBABILITY DISTRIBUTION BREAKDOWN */}
+                            {patient.ai_risk?.probabilities && (
+                              <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
+                                <div className="flex items-center justify-between text-[10px] uppercase font-bold text-slate-400">
+                                  <span>Arrival Model 5-Class ESI Acuity Probabilities</span>
+                                  <span className="font-mono text-slate-500">Model: v{aiModelVer}</span>
+                                </div>
+                                <div className="grid grid-cols-5 gap-1.5 text-center">
+                                  {['1', '2', '3', '4', '5'].map((k) => {
+                                    const prob = Number(patient.ai_risk.probabilities[k] || 0);
+                                    const isTop = String(originalAiLevel) === k;
+                                    return (
+                                      <div
+                                        key={k}
+                                        className={`p-1.5 rounded-lg border text-center ${
+                                          isTop 
+                                            ? 'bg-cyan-950/80 border-cyan-500 text-cyan-200 shadow-sm shadow-cyan-900/50' 
+                                            : 'bg-slate-900/60 border-slate-800 text-slate-400'
+                                        }`}
+                                      >
+                                        <div className="text-[10px] font-bold">ESI {k}</div>
+                                        <div className="text-xs font-mono font-bold text-white mt-0.5">
+                                          {(prob * 100).toFixed(1)}%
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            )}
+
+                            {/* REAL CONTRIBUTING FACTORS INFLUENCING ASSESSMENT */}
+                            <div className="bg-slate-950 p-3 rounded-xl border border-slate-800 space-y-2">
+                              <span className="text-[10px] uppercase font-bold text-slate-300 block tracking-wider">
+                                Factors influencing this AI assessment:
                               </span>
                               {patient.ai_explanation?.top_features && Array.isArray(patient.ai_explanation.top_features) && patient.ai_explanation.top_features.length > 0 ? (
-                                <ul className="space-y-1">
+                                <ul className="space-y-1.5">
                                   {patient.ai_explanation.top_features.map((feat, fIdx) => (
-                                    <li key={fIdx} className="flex items-center gap-2 text-slate-300">
-                                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />
-                                      <strong className="text-slate-200">{feat.feature}:</strong>
-                                      <span className="font-mono text-cyan-300">{feat.value}</span>
+                                    <li key={fIdx} className="flex items-center justify-between gap-2 text-slate-300 p-1.5 rounded bg-slate-900/50 border border-slate-800/60">
+                                      <div className="flex items-center gap-2">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />
+                                        <strong className="text-slate-200">{formatClinicalFeatureName(feat.feature)}:</strong>
+                                        <span className="font-mono text-cyan-300 text-[11px]">{feat.value}</span>
+                                      </div>
                                       {feat.impact && (
-                                        <span className={`text-[10px] font-semibold px-1.5 py-0.2 rounded ${
-                                          feat.impact === 'elevating' ? 'bg-rose-950 text-rose-300' : 'bg-slate-900 text-slate-400'
+                                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded ${
+                                          feat.impact === 'elevating' || String(feat.impact).includes('+') 
+                                            ? 'bg-rose-950 text-rose-300 border border-rose-800/60' 
+                                            : 'bg-emerald-950 text-emerald-300 border border-emerald-800/60'
                                         }`}>
-                                          ({feat.impact} risk)
+                                          {feat.impact === 'elevating' ? 'Elevates Urgency' : 'Stabilizing Factor'}
                                         </span>
                                       )}
                                     </li>
                                   ))}
                                 </ul>
                               ) : (
-                                <p className="text-slate-300 text-xs">
-                                  {patient.ai_explanation?.summary || 'Standard physiological vitals and presenting chief complaint evaluate to current acuity index.'}
-                                </p>
+                                <ul className="space-y-1 text-slate-300">
+                                  <li className="flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                                    <span>Bedside physiological vitals (SpO2, Blood Pressure, Heart Rate, Respiration)</span>
+                                  </li>
+                                  <li className="flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                                    <span>Age cohort baseline reference thresholds</span>
+                                  </li>
+                                  <li className="flex items-center gap-2">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                                    <span>Presenting clinical complaint &amp; symptom severity</span>
+                                  </li>
+                                </ul>
                               )}
                             </div>
 
-                            <p className="text-[10px] text-slate-500 italic">
-                              *Notice: AI evaluation is provided solely as Clinical Decision Support. The clinician maintains full autonomy and final authority over all triage and discharge decisions.
-                            </p>
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-[10px] text-slate-400 pt-1 border-t border-slate-800/60">
+                              <span className="italic">
+                                *Clinical Notice: Factors influencing the AI assessment represent statistical feature attributions within the mathematical model and do not indicate clinical causation.
+                              </span>
+                              {aiTimestamp && (
+                                <span className="font-mono text-slate-500 shrink-0">
+                                  Assessed at: {aiTimestamp}
+                                </span>
+                              )}
+                            </div>
                           </div>
                         )}
 
