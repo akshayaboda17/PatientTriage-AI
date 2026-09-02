@@ -176,8 +176,8 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
   const reassessmentCount = activeEncounters.filter(e => (e.status === 'WAITING' && !e.bed_number && (e.wait_evaluation?.reassessment_required || e.wait_eval?.exceeded)) || e.safety_status === 'REASSESS').length;
 
   // Capacity & Staff numbers
-  const totalBeds = capacityData?.beds?.total_beds ?? 25;
-  const availableBeds = capacityData?.beds?.available_beds ?? (totalBeds - (capacityData?.beds?.occupied_beds || 0));
+  const totalBeds = capacityData?.beds?.total ?? capacityData?.beds?.total_beds ?? 25;
+  const availableBeds = capacityData?.beds?.available ?? capacityData?.beds?.available_beds ?? (totalBeds - (capacityData?.beds?.occupied || capacityData?.beds?.occupied_beds || 0));
   const onDutyStaffList = capacityData?.staff?.staff_list || [];
   const onDutyStaffCount = onDutyStaffList.length;
 
@@ -537,18 +537,22 @@ export const DashboardView = ({ onSelectPatient, onReviewPatient, onOpenRegister
                     const hasAssignedBed = Boolean(patient.bed_number);
                     const isWaiting = patient.status === 'WAITING' && !hasAssignedBed;
                     const isSafeWaitExceeded = isWaiting && Boolean(patient.wait_eval?.exceeded || patient.wait_evaluation?.reassessment_required);
-                    const bedDisplayText = hasAssignedBed ? `Bed: ${patient.bed_number}` : 'Bed: Not Assigned · Waiting for Available Bed';
+                    const bedDisplayText = hasAssignedBed 
+                      ? `Bed: ${patient.bed_number}` 
+                      : (availableBeds === 0 || patient.waiting_for_bed) 
+                      ? 'Bed: All Beds Occupied · Waiting for Available Care Space' 
+                      : 'Bed: Assigning Care Space...';
 
                     // Status Text
                     let careStatusText = patient.status;
                     let careStatusBadgeCls = 'bg-slate-800 text-slate-300 border-slate-700';
                     if (patient.status === 'WAITING') {
-                      if (patient.waiting_for_bed || patient.waiting_status_text === 'WAITING FOR AVAILABLE CARE SPACE') {
+                      if (availableBeds === 0 || patient.waiting_for_bed || patient.waiting_status_text === 'WAITING FOR AVAILABLE CARE SPACE') {
                         careStatusText = 'WAITING FOR AVAILABLE CARE SPACE';
                         careStatusBadgeCls = 'bg-amber-950/80 text-amber-300 border-amber-800/80';
                       } else {
-                        careStatusText = 'WAITING FOR CLINICAL ASSESSMENT';
-                        careStatusBadgeCls = 'bg-cyan-950/80 text-cyan-300 border-cyan-800/80';
+                        careStatusText = 'IN CARE';
+                        careStatusBadgeCls = 'bg-indigo-950 text-indigo-300 border-indigo-700';
                       }
                     } else if (patient.status === 'IN_TREATMENT' || patient.status === 'IN_TRIAGE') {
                       careStatusText = 'IN CARE';

@@ -58,6 +58,11 @@ def get_ed_encounters(
         ]))
 
     from services.hospital_config_service import HospitalConfigService
+    from services.bed_service import BedService
+
+    # Auto-assign available beds to active patients so patients only wait if all beds are occupied
+    BedService.auto_assign_beds(db, staff.hospital_id)
+
     hosp_cfg = HospitalConfigService.get_config(staff.hospital_id)
     is_surge = hosp_cfg.get("surge_mode_active", False)
     total_bed_capacity = hosp_cfg.get("bed_capacity", 25)
@@ -238,14 +243,11 @@ def get_ed_encounters(
         else:
             recommended_service = "Emergency Medicine"
 
-        # 9. Waiting State Distinction: No Fake Bed & Waiting Space Assessment
+        # 9. Waiting State Distinction: Only wait if no bed and all beds occupied
         waiting_for_bed = False
         if enc.status == EncounterStatusEnum.WAITING and not enc.bed_number:
-            if available_beds_count <= 0 or (triage_level <= 2 and available_beds_count < 2):
-                waiting_for_bed = True
-                waiting_status_text = "WAITING FOR AVAILABLE CARE SPACE"
-            else:
-                waiting_status_text = "WAITING FOR CLINICAL ASSESSMENT"
+            waiting_for_bed = True
+            waiting_status_text = "WAITING FOR AVAILABLE CARE SPACE"
         elif enc.status in [EncounterStatusEnum.IN_TREATMENT, EncounterStatusEnum.IN_TRIAGE]:
             waiting_status_text = "IN CARE"
         elif enc.status == EncounterStatusEnum.DISCHARGED:
@@ -579,8 +581,9 @@ def discharge_encounter(
 
     prev_status = enc.status.value
     prev_bed = enc.bed_number
-    enc.status = EncounterStatusEnum.DISCHARGED
-    enc.bed_number = None  # Free assigned bed
+
+    from services.bed_service import BedService
+    BedService.release_bed_and_admit_next(db, staff.hospital_id, enc)
 
     # Also resolve active alerts for this encounter
     active_alerts = db.query(ClinicalAlert).filter(

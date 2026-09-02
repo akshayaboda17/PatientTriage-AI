@@ -475,7 +475,11 @@ def seed_demo_data(db: Session = Depends(get_db)):
                     created_at=now - datetime.timedelta(minutes=10)
                 )
                 db.add(pa)
-                db.commit()
+            db.commit()
+
+    # Automatically allocate available beds so patients are in care and only wait when beds are occupied
+    from services.bed_service import BedService
+    BedService.auto_assign_beds(db, "DEMO001")
 
     return {
         "message": "Complete 20-Patient Synthetic Demo Cohort seeded successfully across all Round 2 clinical archetypes.",
